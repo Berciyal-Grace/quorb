@@ -1,0 +1,130 @@
+//! Cada proveedor devuelve un `UsageReport`. Nunca hacen panic ni
+//! devuelven `Err`: cualquier fallo se refleja en `status` + `message`.
+
+pub mod anthropic_api;
+pub mod claude;
+pub mod codex;
+pub mod copilot;
+pub mod cursor;
+pub mod gemini;
+pub mod nan;
+pub mod nan_cloud;
+pub mod openai_api;
+pub mod openrouter;
+
+use crate::config::AppConfig;
+use crate::model::UsageReport;
+use chrono::{DateTime, Datelike, TimeZone, Utc};
+use futures::future::BoxFuture;
+use futures::FutureExt;
+use std::path::{Path, PathBuf};
+
+pub async fn fetch_all(cfg: &AppConfig, http: &reqwest::Client) -> Vec<UsageReport> {
+    let mut jobs: Vec<BoxFuture<'_, UsageReport>> = vec![];
+    if cfg.claude.enabled {
+        jobs.push(claude::fetch(&cfg.claude, http).boxed());
+    }
+    if cfg.codex.enabled {
+        jobs.push(codex::fetch(&cfg.codex, http).boxed());
+    }
+    if cfg.gemini.enabled {
+        jobs.push(gemini::fetch(&cfg.gemini, http).boxed());
+    }
+    if cfg.cursor.enabled {
+        jobs.push(cursor::fetch(&cfg.cursor, http).boxed());
+    }
+    if cfg.copilot.enabled {
+        jobs.push(copilot::fetch(&cfg.copilot, http).boxed());
+    }
+    if cfg.nan.enabled {
+        jobs.push(nan::fetch(&cfg.nan, http).boxed());
+    }
+    if cfg.openrouter.enabled {
+        jobs.push(openrouter::fetch(&cfg.openrouter, http).boxed());
+    }
+    if cfg.anthropic_api.enabled {
+        jobs.push(anthropic_api::fetch(&cfg.anthropic_api, http).boxed());
+    }
+    if cfg.openai_api.enabled {
+        jobs.push(openai_api::fetch(&cfg.openai_api, http).boxed());
+    }
+    futures::future::join_all(jobs).await
+}
+
+/// Primer instante del mes actual (UTC).
+pub(crate) fn month_start(now: DateTime<Utc>) -> DateTime<Utc> {
+    Utc.with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
+        .single()
+        .unwrap_or(now)
+}
+
+/// Primer instante del mes siguiente (UTC).
+pub(crate) fn next_month_start(now: DateTime<Utc>) -> DateTime<Utc> {
+    let (y, m) = if now.month() == 12 { (now.year() + 1, 1) } else { (now.year(), now.month() + 1) };
+    Utc.with_ymd_and_hms(y, m, 1, 0, 0, 0).single().unwrap_or(now)
+}
+
+/// Reinicio y duración del mes natural en curso, para medidores mensuales.
+pub(crate) fn month_window(now: DateTime<Utc>) -> (String, i64) {
+    let start = month_start(now);
+    let end = next_month_start(now);
+    (end.to_rfc3339(), (end - start).num_seconds())
+}
+
+pub(crate) fn unix_to_rfc3339(secs: i64) -> Option<String> {
+    Utc.timestamp_opt(secs, 0).single().map(|d| d.to_rfc3339())
+}
+
+/// Ruta explícita si existe; si no, la primera candidata que exista.
+pub(crate) fn resolve_path(explicit: Option<&str>, candidates: &[PathBuf]) -> Result<PathBuf, String> {
+    if let Some(p) = explicit {
+        let p = PathBuf::from(p.trim());
+        return if p.is_file() {
+            Ok(p)
+        } else {
+            Err(format!("No existe {}", p.display()))
+        };
+    }
+    candidates
+        .iter()
+        .find(|p| p.is_file())
+        .cloned()
+        .ok_or_else(|| {
+            let list: Vec<String> = candidates.iter().map(|p| p.display().to_string()).collect();
+            format!("No encuentro credenciales en: {}", list.join(", "))
+        })
+}
+
+pub(crate) fn read_json(path: &Path) -> Result<serde_json::Value, String> {
+    let raw = std::fs::read_to_string(path).map_err(|e| format!("No puedo leer {}: {e}", path.display()))?;
+    serde_json::from_str(&raw).map_err(|e| format!("JSON inválido en {}: {e}", path.display()))
+}
+
+pub(crate) fn home() -> PathBuf {
+    dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Mensaje legible a partir de un error de reqwest.
+pub(crate) fn net_error(e: reqwest::Error) -> String {
+    if e.is_timeout() {
+        "Tiempo de espera agotado".into()
+    } else if e.is_connect() {
+        "Sin conexión con el servidor".into()
+    } else {
+        format!("Error de red: {e}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn month_start_is_first_day_midnight() {
+        let now = Utc.with_ymd_and_hms(2026, 10, 6, 15, 30, 0).unwrap();
+        assert_eq!(month_start(now).to_rfc3339(), "2026-10-01T00:00:00+00:00");
+        let dec = Utc.with_ymd_and_hms(2026, 12, 20, 0, 0, 0).unwrap();
+        assert_eq!(next_month_start(dec).to_rfc3339(), "2027-01-01T00:00:00+00:00");
+        assert_eq!(month_window(now).1, 31 * 86400);
+    }
+}

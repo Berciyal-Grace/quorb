@@ -1,0 +1,445 @@
+mod config;
+mod history;
+mod login;
+mod model;
+mod providers;
+mod secrets;
+
+use config::AppConfig;
+use model::UsageReport;
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::Duration;
+use serde::{Deserialize, Serialize};
+use tauri::{PhysicalPosition, PhysicalSize};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+
+const WIDGET: &str = "widget";
+const SETTINGS: &str = "settings";
+const OVERLAY: &str = "overlay";
+const TRAY_ID: &str = "main";
+
+/// Atajos registrados → acción, y errores del último registro (para Ajustes).
+#[derive(Default)]
+struct Shortcuts {
+    map: Mutex<Vec<(Shortcut, &'static str)>>,
+    errors: Mutex<Vec<String>>,
+}
+
+/// (Re)registra los atajos globales según la config.
+fn apply_shortcuts(app: &AppHandle, cfg: &config::ShortcutsConfig) {
+    let gs = app.global_shortcut();
+    let _ = gs.unregister_all();
+    let mut map = vec![];
+    let mut errors = vec![];
+    if cfg.enabled {
+        for (action, label, text) in [
+            ("toggle", "Mostrar / ocultar", &cfg.toggle),
+            ("open_peak", "Abrir el más cargado", &cfg.open_peak),
+            ("refresh", "Actualizar", &cfg.refresh),
+        ] {
+            if text.is_empty() {
+                continue;
+            }
+            match text.parse::<Shortcut>() {
+                Ok(sc) => match gs.register(sc) {
+                    Ok(()) => map.push((sc, action)),
+                    Err(e) => errors.push(format!("{label} ({text}): no se pudo registrar, ¿lo usa otra app? ({e})")),
+                },
+                Err(e) => errors.push(format!("{label} ({text}): combinación no válida ({e})")),
+            }
+        }
+    }
+    if let Some(state) = app.try_state::<Shortcuts>() {
+        *state.map.lock().unwrap() = map;
+        *state.errors.lock().unwrap() = errors;
+    }
+}
+
+fn on_shortcut(app: &AppHandle, action: &str) {
+    match action {
+        "toggle" => toggle_widget(app),
+        "open_peak" => {
+            if let Some(w) = app.get_webview_window(WIDGET) {
+                let _ = w.show();
+            }
+            let _ = app.emit_to(WIDGET, "open-peak", ());
+        }
+        "refresh" => {
+            let _ = app.emit("refresh-now", ());
+        }
+        _ => {}
+    }
+}
+
+#[tauri::command]
+fn shortcut_errors(state: State<'_, Shortcuts>) -> Vec<String> {
+    state.errors.lock().unwrap().clone()
+}
+
+struct AppState {
+    config: Mutex<AppConfig>,
+    config_path: PathBuf,
+    http: reqwest::Client,
+    history: history::History,
+}
+
+// ───────────────────────── comandos ─────────────────────────
+
+#[tauri::command]
+fn get_config(state: State<'_, AppState>) -> AppConfig {
+    state.config.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn save_config(app: AppHandle, state: State<'_, AppState>, config: AppConfig) -> Result<AppConfig, String> {
+    let config = config.sanitized();
+    config::save(&state.config_path, &config)?;
+    let old_shortcuts = std::mem::replace(&mut *state.config.lock().unwrap(), config.clone()).shortcuts;
+    if old_shortcuts != config.shortcuts {
+        apply_shortcuts(&app, &config.shortcuts);
+    }
+    if let Some(w) = app.get_webview_window(WIDGET) {
+        let _ = w.set_always_on_top(config.always_on_top);
+    }
+    let _ = app.emit("config-changed", &config);
+    Ok(config)
+}
+
+#[tauri::command]
+fn secret_status() -> BTreeMap<String, bool> {
+    secrets::status()
+}
+
+#[tauri::command]
+fn set_secret(app: AppHandle, key: String, value: String) -> Result<(), String> {
+    secrets::set(&key, &value)?;
+    let _ = app.emit("config-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+async fn fetch_usage(state: State<'_, AppState>) -> Result<Vec<UsageReport>, String> {
+    let cfg = state.config.lock().unwrap().clone();
+    let reports = providers::fetch_all(&cfg, &state.http).await;
+    state.history.record(&reports, chrono::Utc::now().timestamp());
+    Ok(reports)
+}
+
+/// Lecturas guardadas de un proveedor en las últimas `hours` horas.
+#[tauri::command]
+fn get_history(state: State<'_, AppState>, provider: String, hours: u32) -> Vec<history::Sample> {
+    let since = chrono::Utc::now().timestamp() - i64::from(hours.clamp(1, 24 * 30)) * 3600;
+    state.history.query(&provider, since)
+}
+
+/// Respuestas en crudo de la API de NaN (Ajustes › NaN › Probar).
+#[tauri::command]
+async fn nan_probe(state: State<'_, AppState>) -> Result<String, String> {
+    let cfg = state.config.lock().unwrap().clone();
+    providers::nan::probe(&cfg.nan, &state.http).await
+}
+
+/// NaN: envía el enlace de acceso al correo (mismo flujo que `nan auth login --email`).
+#[tauri::command]
+async fn nan_login_request(state: State<'_, AppState>, email: String) -> Result<(), String> {
+    providers::nan_cloud::login_request(&state.http, &email).await
+}
+
+/// NaN: usa el enlace pegado para abrir sesión, la guarda en el almacén seguro y devuelve el usuario.
+#[tauri::command]
+async fn nan_login_complete(app: AppHandle, state: State<'_, AppState>, link: String) -> Result<String, String> {
+    let cookie = providers::nan_cloud::login_complete(&link).await?;
+    let who = providers::nan_cloud::whoami(&state.http, &cookie).await.map_err(|e| match e {
+        providers::nan_cloud::CloudError::Expired => "NaN no ha aceptado la sesión del enlace. Pide otro e inténtalo de nuevo.".to_string(),
+        providers::nan_cloud::CloudError::Other(m) => m,
+    })?;
+    secrets::set(secrets::NAN_SESSION, &cookie)?;
+    let _ = app.emit("config-changed", ());
+    Ok(who)
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct EffectRequest {
+    /// confetti | glow | custom
+    kind: String,
+    /// exceeded | reset (elige el archivo del efecto propio)
+    moment: String,
+    /// Rectángulo del monitor en píxeles físicos.
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct EffectPayload {
+    kind: String,
+    moment: String,
+    media_path: Option<String>,
+    media_size: String,
+    media_sound: bool,
+    accent: String,
+}
+
+/// Lanza un efecto a pantalla completa en la ventana overlay (transparente y que deja pasar los clics).
+#[tauri::command]
+fn play_effect(app: AppHandle, state: State<'_, AppState>, req: EffectRequest) -> Result<(), String> {
+    let cfg = state.config.lock().unwrap().clone();
+    let w = app.get_webview_window(OVERLAY).ok_or("No existe la ventana de efectos")?;
+    let mut media_path = None;
+    if req.kind == "custom" {
+        let path = cfg
+            .alerts
+            .media_for(&req.moment)
+            .map(str::to_string)
+            .ok_or("No hay archivo para el efecto propio de este aviso")?;
+        // Solo ese archivo queda accesible desde el webview (asset protocol).
+        app.asset_protocol_scope().allow_file(&path).map_err(|e| e.to_string())?;
+        media_path = Some(path);
+    }
+    w.set_position(PhysicalPosition::new(req.x, req.y)).map_err(|e| e.to_string())?;
+    w.set_size(PhysicalSize::new(req.width.max(1), req.height.max(1))).map_err(|e| e.to_string())?;
+    let _ = w.set_ignore_cursor_events(true);
+    w.show().map_err(|e| e.to_string())?;
+    app.emit_to(
+        OVERLAY,
+        "play-effect",
+        EffectPayload {
+            kind: req.kind,
+            moment: req.moment,
+            media_path,
+            media_size: cfg.alerts.media_size.clone(),
+            media_sound: cfg.alerts.media_sound,
+            accent: cfg.accent_color.clone(),
+        },
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn overlay_done(app: AppHandle) {
+    if let Some(w) = app.get_webview_window(OVERLAY) {
+        let _ = w.hide();
+    }
+}
+
+#[tauri::command]
+fn open_login(state: State<'_, AppState>, provider: String) -> Result<(), String> {
+    let cfg = state.config.lock().unwrap().clone();
+    login::open(&provider, &cfg)
+}
+
+// Async: crear ventanas desde un comando síncrono puede bloquearse en Windows.
+#[tauri::command]
+async fn open_settings(app: AppHandle) -> Result<(), String> {
+    show_settings(&app).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_tray_tooltip(app: AppHandle, text: String) {
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        let _ = tray.set_tooltip(Some(text));
+    }
+}
+
+// ───────────────────────── ventanas ─────────────────────────
+
+fn show_settings(app: &AppHandle) -> tauri::Result<()> {
+    if let Some(w) = app.get_webview_window(SETTINGS) {
+        w.show()?;
+        w.unminimize()?;
+        return w.set_focus();
+    }
+    WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App("index.html".into()))
+        .title("Ajustes · Quorb")
+        .inner_size(560.0, 720.0)
+        .min_inner_size(440.0, 480.0)
+        .center()
+        .build()?;
+    Ok(())
+}
+
+fn toggle_widget(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(WIDGET) {
+        if w.is_visible().unwrap_or(false) {
+            let _ = w.hide();
+        } else {
+            let _ = w.show();
+        }
+    }
+}
+
+/// La app se llamaba «egdev AI Usage» (identificador `es.egdev.ai-usage`).
+/// Si existe un fichero de entonces y aún no hay uno nuevo, se copia.
+fn migrate_legacy_dir(dir: &std::path::Path, file: &str) {
+    let target = dir.join(file);
+    if target.exists() {
+        return;
+    }
+    let Some(legacy) = dir.parent().map(|p| p.join("es.egdev.ai-usage").join(file)) else {
+        return;
+    };
+    if legacy.is_file() {
+        let _ = std::fs::create_dir_all(dir);
+        let _ = std::fs::copy(legacy, target);
+    }
+}
+
+fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+    let toggle = MenuItem::with_id(app, "toggle", "Mostrar / ocultar widget", true, None::<&str>)?;
+    let refresh = MenuItem::with_id(app, "refresh", "Actualizar ahora", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", "Ajustes…", true, None::<&str>)?;
+    let sep = PredefinedMenuItem::separator(app)?;
+    let quit = MenuItem::with_id(app, "quit", "Salir", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&toggle, &refresh, &settings, &sep, &quit])?;
+
+    let mut builder = TrayIconBuilder::with_id(TRAY_ID)
+        .tooltip("Quorb")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "toggle" => toggle_widget(app),
+            "refresh" => {
+                let _ = app.emit("refresh-now", ());
+            }
+            "settings" => {
+                let _ = show_settings(app);
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                toggle_widget(tray.app_handle());
+            }
+        });
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+    builder.build(app)?;
+    Ok(())
+}
+
+// ───────────────────────── arranque ─────────────────────────
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        // Debe ir el primero: si ya está abierta, muestra el widget existente.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(w) = app.get_webview_window(WIDGET) {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    let action = app.try_state::<Shortcuts>().and_then(|s| {
+                        let map = s.map.lock().unwrap();
+                        let found = map.iter().find(|(sc, _)| sc == shortcut).map(|(_, a)| *a);
+                        found
+                    });
+                    if let Some(a) = action {
+                        on_shortcut(app, a);
+                    }
+                })
+                .build(),
+        )
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
+        .setup(|app| {
+            let config_dir = app.path().app_config_dir()?;
+            let data_dir = app.path().app_data_dir()?;
+            migrate_legacy_dir(&config_dir, "config.json");
+            migrate_legacy_dir(&data_dir, "history.json");
+            let config_path = config_dir.join("config.json");
+            let cfg = config::load(&config_path);
+            let http = reqwest::Client::builder()
+                .timeout(Duration::from_secs(20))
+                .user_agent(concat!("quorb/", env!("CARGO_PKG_VERSION")))
+                .build()?;
+
+            // El frontend coloca la tira en su borde y la muestra (evita un parpadeo).
+            if let Some(w) = app.get_webview_window(WIDGET) {
+                let _ = w.set_always_on_top(cfg.always_on_top);
+            }
+            let history = history::History::load(data_dir.join("history.json"));
+
+            // Ventana de efectos: transparente, sin foco, encima de todo y sin capturar el ratón.
+            let overlay = WebviewWindowBuilder::new(app, OVERLAY, WebviewUrl::App("index.html".into()))
+                .title("Quorb · efectos")
+                .decorations(false)
+                .transparent(true)
+                .shadow(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .focused(false)
+                .focusable(false)
+                .visible(false)
+                .build()?;
+            let _ = overlay.set_ignore_cursor_events(true);
+
+            app.manage(Shortcuts::default());
+            apply_shortcuts(app.handle(), &cfg.shortcuts);
+            app.manage(AppState {
+                config: Mutex::new(cfg),
+                config_path,
+                http,
+                history,
+            });
+            build_tray(app)?;
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Cerrar el widget lo oculta; la app sigue en la bandeja.
+            if window.label() == WIDGET {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
+        .invoke_handler(tauri::generate_handler![
+            get_config,
+            save_config,
+            secret_status,
+            set_secret,
+            fetch_usage,
+            open_login,
+            open_settings,
+            set_tray_tooltip,
+            get_history,
+            nan_probe,
+            nan_login_request,
+            nan_login_complete,
+            play_effect,
+            overlay_done,
+            shortcut_errors,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error al arrancar Quorb");
+}

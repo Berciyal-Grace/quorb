@@ -1,0 +1,55 @@
+// Ritmo de consumo: compara lo gastado con el tiempo transcurrido de la ventana.
+
+import type { Meter, Spend } from './types';
+
+export interface Pace {
+  /** fracción de la ventana transcurrida (0–1) */
+  elapsed: number;
+  /** fracción consumida (0–1, puede pasar de 1) */
+  used: number;
+  /** used / elapsed: 1 = vas justo, >1 = vas rápido */
+  ratio: number | null;
+  /** % estimado al final de la ventana al ritmo actual */
+  projected: number | null;
+  /** cuándo se agotaría al ritmo actual, si es antes del reinicio */
+  exhaustAt: Date | null;
+  status: 'ok' | 'fast' | 'over';
+}
+
+const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+
+export function paceOf(used: number, start: number, end: number, now: number): Pace {
+  const span = end - start;
+  const elapsed = span > 0 ? clamp((now - start) / span, 0, 1) : 0;
+  // Al principio de la ventana la proyección no significa nada.
+  const ratio = elapsed >= 0.03 ? used / elapsed : null;
+  const projected = ratio != null ? ratio * 100 : null;
+  let exhaustAt: Date | null = null;
+  if (ratio != null && used > 0 && used < 1 && ratio > 1) {
+    const t = start + (span * elapsed) / used;
+    if (t < end) exhaustAt = new Date(t);
+  }
+  const status = used >= 1 || (projected ?? 0) >= 100 ? 'over' : ratio != null && ratio > 1.15 ? 'fast' : 'ok';
+  return { elapsed, used, ratio, projected, exhaustAt, status };
+}
+
+/** Ritmo de un medidor con % y ventana conocida (sesión 5 h, semana, mes…). */
+export function meterPace(m: Meter, now: number = Date.now()): Pace | null {
+  if (m.percent == null || !m.resetsAt || !m.windowSeconds) return null;
+  const end = Date.parse(m.resetsAt);
+  if (Number.isNaN(end)) return null;
+  return paceOf(m.percent / 100, end - m.windowSeconds * 1000, end, now);
+}
+
+/** Ritmo del gasto mensual frente al presupuesto (o proyección del mes si no hay presupuesto). */
+export function spendPace(s: Spend, now: number = Date.now()): (Pace & { projectedAmount: number | null }) | null {
+  const d = new Date(now);
+  const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+  const end = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+  const elapsed = clamp((now - start) / (end - start), 0, 1);
+  const projectedAmount = elapsed >= 0.03 ? s.amount / elapsed : null;
+  if (s.budget && s.budget > 0) {
+    return { ...paceOf(s.amount / s.budget, start, end, now), projectedAmount };
+  }
+  return { elapsed, used: 0, ratio: null, projected: null, exhaustAt: null, status: 'ok', projectedAmount };
+}

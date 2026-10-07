@@ -1,0 +1,44 @@
+[package]
+name = "quorb"
+version = "0.1.0"
+description = "Edge-docked usage rings for your AI subscriptions and APIs"
+license = "MIT"
+repository = "https://github.com/egdev6/quorb"
+authors = ["Enrique Gómez Navarro <egdev6@gmail.com>"]
+edition = "2021"
+
+[lib]
+name = "quorb_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
+tauri-plugin-opener = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+chrono = { version = "0.4.35", features = ["serde"] }
+futures = "0.3"
+dirs = "6"
+base64 = "0.22"
+# Lectura (solo lectura) de la sesión local de Cursor
+rusqlite = { version = "0.32", features = ["bundled"] }
+# Windows Credential Manager (y Keychain / Secret Service en otros SO)
+keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
