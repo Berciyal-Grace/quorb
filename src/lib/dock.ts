@@ -57,6 +57,12 @@ export function panelRect(area: Rect, edge: Edge, strip: Rect, anchor: number, w
   }
 }
 
+/** Stable panel capacity, independent of provider content; overflow scrolls inside the panel. */
+export function panelHeightLimit(area: Rect, edge: Edge, strip: Rect, w: number, gap = 8): number {
+  const available = isVertical(edge) ? area.h : area.h - strip.h - gap;
+  return Math.max(1, Math.min(Math.round(w * 1.6), available));
+}
+
 /** Bounds for every panel anchor along the strip, so hovering does not move the window origin. */
 export function panelWindowRect(area: Rect, edge: Edge, strip: Rect, w: number, h: number): Rect {
   const start = isVertical(edge) ? strip.y : strip.x;

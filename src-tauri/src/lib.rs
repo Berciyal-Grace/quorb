@@ -21,6 +21,7 @@ use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder
 const WIDGET: &str = "widget";
 const SETTINGS: &str = "settings";
 const OVERLAY: &str = "overlay";
+const DETAIL: &str = "detail";
 const TRAY_ID: &str = "main";
 
 /// Atajos registrados → acción, y errores del último registro (para Ajustes).
@@ -103,8 +104,10 @@ fn save_config(app: AppHandle, state: State<'_, AppState>, config: AppConfig) ->
     if old_shortcuts != config.shortcuts {
         apply_shortcuts(&app, &config.shortcuts);
     }
-    if let Some(w) = app.get_webview_window(WIDGET) {
-        let _ = w.set_always_on_top(config.always_on_top);
+    for label in [WIDGET, DETAIL] {
+        if let Some(w) = app.get_webview_window(label) {
+            let _ = w.set_always_on_top(config.always_on_top);
+        }
     }
     let _ = app.emit("config-changed", &config);
     Ok(config)
@@ -242,6 +245,18 @@ async fn open_settings(app: AppHandle) -> Result<(), String> {
     show_settings(&app).map_err(|e| e.to_string())
 }
 
+/// Never show a detached panel while its widget is hidden (including an in-flight hover).
+#[tauri::command]
+fn show_detail(app: AppHandle) -> Result<bool, String> {
+    let widget = app.get_webview_window(WIDGET).ok_or("No existe el widget")?;
+    if !widget.is_visible().map_err(|e| e.to_string())? {
+        return Ok(false);
+    }
+    let detail = app.get_webview_window(DETAIL).ok_or("No existe el panel de detalle")?;
+    detail.show().map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
 #[tauri::command]
 fn set_tray_tooltip(app: AppHandle, text: String) {
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
@@ -266,10 +281,19 @@ fn show_settings(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+fn hide_detail(app: &AppHandle) {
+    if let Some(detail) = app.get_webview_window(DETAIL) {
+        let _ = detail.hide();
+    }
+    let _ = app.emit_to(DETAIL, "detail-state", None::<()>);
+}
+
 fn toggle_widget(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(WIDGET) {
         if w.is_visible().unwrap_or(false) {
             let _ = w.hide();
+            hide_detail(app);
+            let _ = app.emit_to(WIDGET, "widget-hidden", ());
         } else {
             let _ = w.show();
         }
@@ -388,6 +412,20 @@ pub fn run() {
             }
             let history = history::History::load(data_dir.join("history.json"));
 
+            // El detalle tiene su propia superficie: abrirlo nunca redimensiona la tira.
+            WebviewWindowBuilder::new(app, DETAIL, WebviewUrl::App("index.html".into()))
+                .title("Quorb · detalle")
+                .inner_size(330.0, 260.0)
+                .decorations(false)
+                .transparent(true)
+                .shadow(false)
+                .always_on_top(cfg.always_on_top)
+                .skip_taskbar(true)
+                .resizable(false)
+                .focused(false)
+                .visible(false)
+                .build()?;
+
             // Ventana de efectos: transparente, sin foco, encima de todo y sin capturar el ratón.
             let overlay = WebviewWindowBuilder::new(app, OVERLAY, WebviewUrl::App("index.html".into()))
                 .title("Quorb · efectos")
@@ -420,6 +458,14 @@ pub fn run() {
                 if let WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = window.hide();
+                    hide_detail(window.app_handle());
+                    let _ = window.app_handle().emit_to(WIDGET, "widget-hidden", ());
+                }
+            } else if window.label() == DETAIL {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    hide_detail(window.app_handle());
+                    let _ = window.app_handle().emit_to(WIDGET, "detail-dismiss", ());
                 }
             }
         })
@@ -431,6 +477,7 @@ pub fn run() {
             fetch_usage,
             open_login,
             open_settings,
+            show_detail,
             set_tray_tooltip,
             get_history,
             nan_probe,

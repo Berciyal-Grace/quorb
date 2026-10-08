@@ -1,19 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { availableMonitors, currentMonitor, getCurrentWindow, primaryMonitor, type Monitor } from '@tauri-apps/api/window';
 import { PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi';
-import { listen } from '@tauri-apps/api/event';
+import { emitTo, listen } from '@tauri-apps/api/event';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import { api } from './lib/api';
-import { mergeReports, peakMeter, reportSummary, trayTooltip } from './lib/format';
+import { mergeReports, peakMeter, trayTooltip } from './lib/format';
 import { derivePalette } from './lib/palette';
 import { detectAlerts, effectFor, notificationText, type AlertMemory } from './lib/alerts';
-import { applyOrder, dropIndex, moveTo, OFFICIAL_USAGE_URL } from './lib/order';
-import { contains, isEdge, isVertical, nearestEdge, panelRect, panelWindowRect, stripRect, type Edge, type Rect } from './lib/dock';
+import { applyOrder, dropIndex, moveTo } from './lib/order';
+import { contains, isEdge, isVertical, nearestEdge, panelHeightLimit, stripRect, type Edge, type Rect } from './lib/dock';
 import { ORB_SIZE, type AppConfig, type UsageReport } from './lib/types';
 import { checkForUpdate, installUpdate, shouldNotifyUpdate, updateErrorText, UPDATE_EVERY_MS, UPDATE_FIRST_DELAY_MS, type UpdatePhase } from './lib/updater';
-import { ProviderCard } from './components/ProviderCard';
-import { ProviderDetails } from './components/ProviderDetails';
+import { DETAIL_EVENTS, DETAIL_WINDOW, isCurrentDetailInteraction, type DetailInteraction, type DetailState } from './lib/detail-panel';
 import { ProviderGauge } from './components/ProviderGauge';
 
 const CLOSE_DELAY = 280;
@@ -94,21 +92,6 @@ async function notify(title: string, body: string) {
   }
 }
 
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand('copy');
-    ta.remove();
-    return ok;
-  }
-}
-
 const Icon = {
   grip: (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -133,17 +116,7 @@ const Icon = {
       <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
     </svg>
   ),
-  chevron: (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  ),
 };
-
-function timeLabel(d: Date | null) {
-  if (!d) return '—';
-  return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-}
 
 interface Size {
   w: number;
@@ -162,19 +135,10 @@ export function Widget() {
   // dock
   const [geo, setGeo] = useState<Geo | null>(null);
   const [stripSize, setStripSize] = useState<Size | null>(null);
-  /** Tamaño medido del panel y para qué proveedor se midió. */
-  const [panel, setPanel] = useState<(Size & { id: string; open: boolean }) | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [anchorRel, setAnchorRel] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const [pos, setPos] = useState<{ strip: { x: number; y: number }; panel: { x: number; y: number } | null }>({
-    strip: { x: 0, y: 0 },
-    panel: null,
-  });
-
-  // panel: desplegable de ritmo/historial y acciones
-  const [detailsOpen, setDetailsOpen] = useState<boolean>(() => local.get('detailsOpen', false));
-  const [toast, setToast] = useState<string | null>(null);
+  const [pos, setPos] = useState({ strip: { x: 0, y: 0 } });
 
   // auto-ocultar
   const [inside, setInside] = useState(false);
@@ -187,7 +151,11 @@ export function Widget() {
 
   const stripRef = useRef<HTMLDivElement>(null);
   const orbsRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
+  const detailStateRef = useRef<DetailState | null>(null);
+  const detailReadyRef = useRef(false);
+  const detailRevision = useRef(Date.now());
+  const detailInsideRef = useRef(false);
+  const insideRef = useRef(false);
   const configRef = useRef<AppConfig | null>(null);
   const reportsRef = useRef<UsageReport[]>([]);
   const geoRef = useRef<Geo | null>(null);
@@ -315,7 +283,6 @@ export function Widget() {
   const hiddenIds = config?.hiddenProviders ?? [];
   const visible = applyOrder(reports, order).filter((r) => !hiddenIds.includes(r.id));
   const active = reports.find((r) => r.id === hovered) ?? null;
-  const panelMounted = !!(active && pos.panel);
 
   // ───── auto-ocultar ─────
   // Actualizaciones: primera comprobación a los 20 s y luego cada 6 h. Los fallos son silenciosos.
@@ -386,7 +353,7 @@ export function Widget() {
     if (revealUntil > Date.now()) setCollapsed(false);
   }, [revealUntil]);
 
-  // ───── tamaños reales de la tira y del panel ─────
+  // ───── tamaño real de la tira (el detalle se mide en su propia ventana) ─────
   useLayoutEffect(() => {
     const ro = new ResizeObserver(() => {
       const s = stripRef.current?.getBoundingClientRect();
@@ -394,25 +361,16 @@ export function Widget() {
         const n = { w: Math.ceil(s.width), h: Math.ceil(s.height) };
         setStripSize((o) => (sameSize(o, n) ? o : n));
       }
-      const p = panelRef.current?.getBoundingClientRect();
-      if (p && hovered) {
-        const n = { w: Math.ceil(p.width), h: Math.ceil(p.height), id: hovered, open: detailsOpen };
-        setPanel((o) => (o && o.id === n.id && o.open === n.open && sameSize(o, n) ? o : n));
-      }
     });
     if (stripRef.current) ro.observe(stripRef.current);
-    if (panelRef.current) ro.observe(panelRef.current);
     return () => ro.disconnect();
-  }, [hovered, panelMounted, detailsOpen]);
+  }, []);
 
-  const measured = panel && panel.id === hovered ? panel : null;
-
-  // ───── colocar la ventana: tira pegada al borde + panel hacia dentro ─────
+  // ───── colocar sólo la tira: esta geometría no depende del hover ─────
   useEffect(() => {
     if (!geo || !stripSize || dragging) return;
     const s = stripRect(geo.area, edge, offset, stripSize.w, stripSize.h);
     let win: Rect;
-    let panelPos: { x: number; y: number } | null = null;
 
     if (collapsed) {
       // Solo una franja fina en el borde; la tira queda fuera de la ventana.
@@ -426,16 +384,9 @@ export function Widget() {
               ? { x: a.x, y: s.y, w: PEEK, h: s.h }
               : { x: a.x + a.w - PEEK, y: s.y, w: PEEK, h: s.h };
     } else {
-      const anchor = (vertical ? s.y : s.x) + anchorRel;
-      const pw = measured?.w ?? panelWidth;
-      const ph = measured?.h ?? Math.round(panelWidth * 0.7);
-      const p = active ? panelRect(geo.area, edge, s, anchor, pw, ph) : null;
-      // Reserve the panel's range along the strip: changing circles only moves the panel,
-      // not the native window origin or the strip's local position.
-      win = p ? panelWindowRect(geo.area, edge, s, pw, ph) : s;
-      if (p) panelPos = { x: p.x - win.x, y: p.y - win.y };
+      win = s;
     }
-    setPos({ strip: { x: s.x - win.x, y: s.y - win.y }, panel: panelPos });
+    setPos({ strip: { x: s.x - win.x, y: s.y - win.y } });
 
     const w = getCurrentWindow();
     const sf = geo.sf;
@@ -450,7 +401,88 @@ export function Widget() {
         }
       })
       .catch(() => {});
-  }, [geo, stripSize, measured, active, anchorRel, edge, offset, vertical, dragging, panelWidth, collapsed]);
+  }, [geo, stripSize, edge, offset, dragging, collapsed]);
+
+  // The detail window owns its dimensions; hovering never mutates widget geometry.
+  useEffect(() => {
+    const strip = geo && stripSize ? stripRect(geo.area, edge, offset, stripSize.w, stripSize.h) : null;
+    const state: DetailState | null = active && geo && strip && !dragging && !collapsed ? {
+      // Keep the interaction session valid during background usage/config updates.
+      revision: detailStateRef.current?.report.id === active.id
+        ? detailStateRef.current.revision
+        : ++detailRevision.current,
+      report: active,
+      area: geo.area,
+      strip,
+      edge,
+      anchor: (vertical ? strip.y : strip.x) + anchorRel,
+      width: panelWidth,
+      maxHeight: panelHeightLimit(geo.area, edge, strip, panelWidth),
+      scaleFactor: geo.sf,
+      orbSize,
+      opacity: config?.opacity ?? 0.94,
+      colors: [ring1, ring2, ring3],
+      updatedAt: updatedAt?.getTime() ?? null,
+      refreshMinutes: config?.refreshMinutes ?? 5,
+      error,
+    } : null;
+    detailStateRef.current = state;
+    if (!state) detailInsideRef.current = false;
+    if (detailReadyRef.current) emitTo(DETAIL_WINDOW, DETAIL_EVENTS.state, state).catch(console.warn);
+  }, [active, geo, stripSize, edge, offset, vertical, anchorRel, dragging, collapsed, panelWidth, orbSize, config?.opacity, config?.refreshMinutes, ring1, ring2, ring3, updatedAt, error]);
+
+  useEffect(() => {
+    let disposed = false;
+    const unlisteners: (() => void)[] = [];
+    const add = async (promise: Promise<() => void>) => {
+      const unlisten = await promise;
+      if (disposed) unlisten(); else unlisteners.push(unlisten);
+    };
+    const register = async () => {
+      await add(listen(DETAIL_EVENTS.ready, () => {
+        if (disposed) return;
+        detailReadyRef.current = true;
+        emitTo(DETAIL_WINDOW, DETAIL_EVENTS.state, detailStateRef.current).catch(console.warn);
+      }));
+      await add(listen<DetailInteraction>(DETAIL_EVENTS.interaction, ({ payload }) => {
+        if (disposed) return;
+        const state = detailStateRef.current;
+        if (!isCurrentDetailInteraction(state, payload)) return;
+        if (payload.kind === 'enter') {
+          detailInsideRef.current = true;
+          window.clearTimeout(closeTimer.current);
+        } else if (payload.kind === 'leave') {
+          detailInsideRef.current = false;
+          if (!insideRef.current) scheduleClose();
+        } else if (payload.kind === 'hide') {
+          cancelTimers();
+          setHovered(null);
+          const hidden = configRef.current?.hiddenProviders ?? [];
+          patchConfig({ hiddenProviders: [...new Set([...hidden, payload.provider])] }).catch((err) => setError(String(err)));
+        }
+      }));
+      await add(listen(DETAIL_EVENTS.widgetHidden, () => {
+        cancelTimers();
+        detailInsideRef.current = false;
+        insideRef.current = false;
+        setInside(false);
+        setHovered(null);
+      }));
+      await add(listen(DETAIL_EVENTS.dismiss, () => {
+        cancelTimers();
+        detailInsideRef.current = false;
+        setHovered(null);
+      }));
+      if (!disposed) await emitTo(DETAIL_WINDOW, DETAIL_EVENTS.requestReady);
+    };
+    register().catch(console.warn);
+    return () => {
+      disposed = true;
+      detailReadyRef.current = false;
+      unlisteners.forEach((unlisten) => unlisten());
+      emitTo(DETAIL_WINDOW, DETAIL_EVENTS.state, null).catch(console.warn);
+    };
+  }, [patchConfig]);
 
   // ───── panel al pasar el ratón ─────
   const cancelTimers = () => {
@@ -465,6 +497,7 @@ export function Widget() {
     const orb = el.getBoundingClientRect();
     const rel = strip ? (vertical ? orb.top + orb.height / 2 - strip.top : orb.left + orb.width / 2 - strip.left) : 0;
     const go = () => {
+      detailInsideRef.current = false;
       setAnchorRel(rel);
       setHovered(id);
     };
@@ -493,6 +526,7 @@ export function Widget() {
 
   const scheduleClose = () => {
     cancelTimers();
+    if (detailInsideRef.current) return;
     closeTimer.current = window.setTimeout(() => setHovered(null), CLOSE_DELAY);
   };
   useEffect(() => () => cancelTimers(), []);
@@ -507,12 +541,6 @@ export function Widget() {
     }, 2500);
     return () => window.clearTimeout(t);
   }, []);
-
-  useEffect(() => {
-    if (!toast) return;
-    const t = window.setTimeout(() => setToast(null), 1800);
-    return () => window.clearTimeout(t);
-  }, [toast]);
 
   // ───── arrastrar la tira y soltar con imán al borde más cercano ─────
   const onGripDown = (e: PointerEvent<HTMLSpanElement>) => {
@@ -623,17 +651,6 @@ export function Widget() {
     },
   });
 
-  // ───── acciones del panel ─────
-  const hideProvider = (id: string) => {
-    setHovered(null);
-    patchConfig({ hiddenProviders: [...new Set([...hiddenIds, id])] }).catch((err) => setError(String(err)));
-  };
-  const toggleDetails = () =>
-    setDetailsOpen((v) => {
-      local.set('detailsOpen', !v);
-      return !v;
-    });
-
   const small = config?.compact ?? false;
   const opacity = config?.opacity ?? 0.94;
 
@@ -645,10 +662,12 @@ export function Widget() {
       data-collapsed={collapsed || undefined}
       style={{ '--panel-alpha': String(opacity), '--ring-1': ring1, '--ring-2': ring2, '--ring-3': ring3 } as CSSProperties}
       onMouseEnter={() => {
+        insideRef.current = true;
         window.clearTimeout(closeTimer.current);
         setInside(true);
       }}
       onMouseLeave={() => {
+        insideRef.current = false;
         setInside(false);
         scheduleClose();
       }}
@@ -719,55 +738,6 @@ export function Widget() {
         </div>
       </div>
 
-      {active && pos.panel && (
-        <div
-          ref={panelRef}
-          className="panel"
-          role="dialog"
-          aria-label={`Detalle de ${active.name}`}
-          // Oculto hasta medirlo, para que no salte de sitio.
-          style={
-            {
-              left: pos.panel.x,
-              top: pos.panel.y,
-              width: panelWidth,
-              '--orb': orbSize,
-              visibility: measured ? 'visible' : 'hidden',
-            } as CSSProperties
-          }
-        >
-          <ProviderCard report={active} />
-
-          <button className="panel__more" aria-expanded={detailsOpen} onClick={toggleDetails}>
-            <span>Ritmo e historial</span>
-            {Icon.chevron}
-          </button>
-          {detailsOpen && <ProviderDetails report={active} />}
-
-          <div className="panel__actions">
-            {OFFICIAL_USAGE_URL[active.id] && (
-              <button className="chip" onClick={() => openUrl(OFFICIAL_USAGE_URL[active.id]).catch(() => {})}>
-                Uso oficial ↗
-              </button>
-            )}
-            <button
-              className="chip"
-              onClick={async () => setToast((await copyText(reportSummary(active))) ? 'Copiado ✓' : 'No se pudo copiar')}
-            >
-              {toast ?? 'Copiar resumen'}
-            </button>
-            <button className="chip chip--muted" onClick={() => hideProvider(active.id)} title="Se sigue consultando y avisando; recupéralo en Ajustes">
-              Ocultar
-            </button>
-          </div>
-
-          <footer className="panel__foot">
-            <span>Actualizado {timeLabel(updatedAt)}</span>
-            <span>cada {config?.refreshMinutes ?? 5} min</span>
-          </footer>
-          {error && <p className="panel__error">{error}</p>}
-        </div>
-      )}
     </div>
   );
 }

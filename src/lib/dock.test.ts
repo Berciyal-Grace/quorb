@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nearestEdge, panelRect, panelWindowRect, stripRect, union } from './dock';
+import { nearestEdge, panelHeightLimit, panelRect, panelWindowRect, stripRect, union } from './dock';
 
 const area = { x: 0, y: 0, w: 1920, h: 1040 }; // pantalla menos barra de tareas
 
@@ -52,6 +52,34 @@ describe('dock', () => {
     const small = panelWindowRect(area, 'top', strip, 300, 160);
     const tall = panelWindowRect(area, 'top', strip, 300, 360);
     expect({ x: small.x, y: small.y, w: small.w }).toEqual({ x: tall.x, y: tall.y, w: tall.w });
+  });
+
+  it.each(['top', 'bottom', 'left', 'right'] as const)('reserves every provider height without moving the strip on %s', (edge) => {
+    for (const offset of [0, 0.5, 1]) {
+      const vertical = edge === 'left' || edge === 'right';
+      const monitor = { x: -1920, y: -200, w: 1920, h: 720 };
+      const strip = stripRect(monitor, edge, offset, vertical ? 80 : 400, vertical ? 400 : 80);
+      const limit = panelHeightLimit(monitor, edge, strip, 300);
+      const reserved = panelWindowRect(monitor, edge, strip, 300, limit);
+      const start = vertical ? strip.y : strip.x;
+      const length = vertical ? strip.h : strip.w;
+      for (const h of [120, 260, limit]) {
+        for (const anchor of [start + 24, start + length - 24]) {
+          const panel = panelRect(monitor, edge, strip, anchor, 300, Math.min(h, limit));
+          expect(union(reserved, panel)).toEqual(reserved);
+        }
+      }
+      expect(reserved.y).toBeGreaterThanOrEqual(monitor.y);
+      expect(reserved.y + reserved.h).toBeLessThanOrEqual(monitor.y + monitor.h);
+    }
+  });
+
+  it('limits panel height to the available space on short monitors', () => {
+    const short = { x: 0, y: 0, w: 800, h: 300 };
+    const strip = stripRect(short, 'bottom', 0.5, 400, 80);
+    expect(panelHeightLimit(short, 'bottom', strip, 300)).toBe(212);
+    expect(panelHeightLimit(short, 'left', strip, 300)).toBe(300);
+    expect(panelHeightLimit(area, 'top', strip, 300)).toBe(480);
   });
 
   it('unions rects', () => {

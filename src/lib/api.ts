@@ -9,6 +9,7 @@ export const api = {
   fetchUsage: () => invoke<UsageReport[]>('fetch_usage'),
   openLogin: (provider: string) => invoke<void>('open_login', { provider }),
   openSettings: () => invoke<void>('open_settings'),
+  showDetail: () => invoke<boolean>('show_detail'),
   setTrayTooltip: (text: string) => invoke<void>('set_tray_tooltip', { text }),
   getHistory: (provider: string, hours: number) => invoke<Sample[]>('get_history', { provider, hours }),
   nanProbe: () => invoke<string>('nan_probe'),
