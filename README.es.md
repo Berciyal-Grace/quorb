@@ -1,170 +1,199 @@
+<!-- egdev:lang:start -->
+<p align="right">
+  <a href="./README.md"><img src="https://img.shields.io/badge/English-1F1F1F?style=for-the-badge&labelColor=0A0A0A&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MCAzMCI%2BPGNsaXBQYXRoIGlkPSJ0Ij48cGF0aCBkPSJNMzAsMTVoMzB2MTV6djE1aC0zMHpoLTMwdi0xNXp2LTE1aDMweiIvPjwvY2xpcFBhdGg%2BPHBhdGggZD0iTTAsMHYzMGg2MHYtMzB6IiBmaWxsPSIjMDEyMTY5Ii8%2BPHBhdGggZD0iTTAsMCA2MCwzME02MCwwIDAsMzAiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSI2Ii8%2BPHBhdGggZD0iTTAsMCA2MCwzME02MCwwIDAsMzAiIGNsaXAtcGF0aD0idXJsKCN0KSIgc3Ryb2tlPSIjQzgxMDJFIiBzdHJva2Utd2lkdGg9IjQiLz48cGF0aCBkPSJNMzAsMHYzME0wLDE1aDYwIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMTAiLz48cGF0aCBkPSJNMzAsMHYzME0wLDE1aDYwIiBzdHJva2U9IiNDODEwMkUiIHN0cm9rZS13aWR0aD0iNiIvPjwvc3ZnPg%3D%3D" alt="English" /></a>
+  <img src="https://img.shields.io/badge/Espa%C3%B1ol-FF0036?style=for-the-badge&labelColor=0A0A0A&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA3NTAgNTAwIj48cmVjdCB3aWR0aD0iNzUwIiBoZWlnaHQ9IjUwMCIgZmlsbD0iI2M2MGIxZSIvPjxyZWN0IHdpZHRoPSI3NTAiIGhlaWdodD0iMjUwIiB5PSIxMjUiIGZpbGw9IiNmZmM0MDAiLz48L3N2Zz4%3D" alt="Español" />
+</p>
+<!-- egdev:lang:end -->
+
+<!-- egdev:header:start -->
+<img src="./.github/assets/banner.png" alt="Quorb banner" width="100%" />
+
+<div align="center">
+
+[![Version](https://img.shields.io/github/package-json/v/egdev6/quorb?style=for-the-badge&labelColor=0A0A0A&color=FF0036&label=version)](https://github.com/egdev6/quorb/blob/main/package.json)
+[![Stars](https://img.shields.io/github/stars/egdev6/quorb?style=for-the-badge&labelColor=0A0A0A&color=FF0036)](https://github.com/egdev6/quorb/stargazers)
+[![Issues](https://img.shields.io/github/issues/egdev6/quorb?style=for-the-badge&labelColor=0A0A0A&color=FF0036)](https://github.com/egdev6/quorb/issues)
+[![License](https://img.shields.io/github/license/egdev6/quorb?style=for-the-badge&labelColor=0A0A0A&color=FF0036)](./LICENSE)
+
+</div>
+<!-- egdev:header:end -->
+
 # Quorb
 
-[English](README.md) · **Español**
+Tus cuotas de IA, siempre a la vista: consumo, capacidad disponible y gasto de tus suscripciones y APIs de IA en Windows.
 
-Tira de anillos pegada al borde de la pantalla de Windows con el consumo de tus suscripciones de IA: **Claude (Pro/Max)**, **ChatGPT (Plus/Pro · Codex)**, **Gemini**, **Cursor**, **GitHub Copilot**, **NaN Builders**, **OpenRouter** y el gasto de las APIs de pago por uso de **Anthropic** y **OpenAI**.
+## Qué es
 
-Tauri 2 + React 19 + TypeScript. Ventana sin bordes, transparente, siempre encima y con icono en la bandeja.
+Quorb reúne tus límites de IA en una herramienta local de escritorio. Podéis consultar cuánto habéis consumido, a qué ritmo y cuándo se reinician los límites, sin abrir el panel de cada proveedor.
 
-## Requisitos (Windows)
+Su widget se pega al borde de la pantalla: es compacto, transparente y permanece por encima de las ventanas. Al pasar el ratón por un proveedor, muestra sus límites, plan, gasto, ritmo e historial.
 
-1. **Rust**: <https://rustup.rs> (toolchain `stable-x86_64-pc-windows-msvc`)
-2. **Microsoft C++ Build Tools** con «Desarrollo para escritorio con C++»
-3. **WebView2** (ya viene con Windows 10/11)
-4. **Node 22+**
+<p align="center"><img src="./.github/assets/project-image.png" alt="Ilustración promocional de la tira de consumo de Quorb" width="100%" /></p>
 
-Guía oficial: <https://v2.tauri.app/start/prerequisites/>
+<!-- egdev:stack:start -->
+## Stack
+<div align="center">
+<a href="https://github.com/Gentleman-Programming/gentle-ai">
+  <img width="220" src="https://raw.githubusercontent.com/Gentleman-Programming/gentle-ai/main/docs/assets/brand/built-with-gentle-ai.png" alt="Built with Gentle-AI" />
+</a>
+</div>
 
-## Arrancar
+<div align="center">
+
+![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+
+![Tauri](https://img.shields.io/badge/Tauri-24C8D8?style=for-the-badge&logo=tauri&logoColor=white)
+![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)
+![npm](https://img.shields.io/badge/npm-CB3837?style=for-the-badge&logo=npm&logoColor=white)
+
+</div>
+<!-- egdev:stack:end -->
+
+## Inicio rápido
+
+Quorb está dirigido actualmente a Windows. Necesitáis Node 22+, Rust con el toolchain MSVC, Microsoft C++ Build Tools y WebView2. Consultad los [requisitos de Tauri](https://v2.tauri.app/start/prerequisites/).
 
 ```powershell
 git clone https://github.com/egdev6/quorb
 cd quorb
 npm install
-npm run app:dev      # desarrollo con hot reload
-npm run app:build    # instalador .msi / .exe en src-tauri\target\release\bundle
+npm run app:dev
 ```
 
-Otros scripts: `npm test` (vitest), `npm run typecheck`, `cd src-tauri && cargo test`, `npm run bump x.y.z`.
+Abrid Ajustes y activad los proveedores que utilizáis. Claude, Codex, Gemini y Cursor leen las sesiones de sus herramientas oficiales; los demás requieren las credenciales indicadas más abajo.
 
-## Uso
+Para compilar un instalador local, ejecutad `npm run app:build`. Los archivos se guardan bajo `src-tauri/target/release/bundle`.
 
-- **Actualizaciones automáticas** (Ajustes › Actualizaciones, activadas por defecto): al arrancar y cada 6 h se consulta la última release de GitHub. Si hay versión nueva, llega una notificación (una vez por versión) y aparece un icono de descarga en la tira; al pulsarlo se descarga, se verifica la firma, se instala y Quorb se reinicia. En Ajustes verás la versión actual, «Buscar ahora» y las notas de la versión.
+> No había ninguna release pública de GitHub al preparar este README. El repositorio es privado actualmente; clonarlo requiere acceso. No se presupone que exista un instalador público.
 
-- El widget es una **tira pegada a un borde de la pantalla** (arriba, abajo, izquierda o derecha) con un círculo por suscripción: solo anillos y logo, sin textos. En los laterales se pone en vertical. Anillo exterior (rojo) = ventana corta (sesión de 5 h); interiores (blanco y rosa) = semanales o por modelo. Un punto rojo avisa de que algo pasa del 90 %; uno ámbar, de que falta iniciar sesión o configurar.
-- **Moverla**: arrastra desde el asa ⋮⋮. Mientras la arrastras flota; al soltar se pega al borde más cercano al punto donde la sueltas y recuerda borde, posición y monitor. También puedes elegir borde y posición en Ajustes. Respeta la barra de tareas.
-- **Pasa el ratón por un círculo** y se despliega el panel con el detalle hacia el interior de la pantalla, alineado con ese círculo: barras del mismo color que cada anillo, porcentaje, hora de reinicio, gasto y avisos.
-- A la derecha (o abajo, en vertical) de la tira: actualizar y ajustes.
-- **Ritmo e historial** (desplegable dentro del panel): para cada límite, cuánto llevas frente al tiempo que ha pasado de la ventana (marca blanca), el ritmo (×) y la proyección o cuándo se agotaría. Debajo, el historial de los últimos 24 h / 7 / 30 días guardado en local y, en NaN, los tokens por día de tu dashboard.
-- **Acciones del panel**: abrir la página de uso oficial, copiar un resumen y ocultar ese círculo (sigue consultándose y avisando; se recupera en Ajustes).
-- **Reordenar**: arrastra un círculo a lo largo de la tira.
-- **Atajos globales** (Ajustes › Atajos, funcionan sin foco): `Ctrl+Alt+U` mostrar/ocultar la tira, `Ctrl+Alt+I` abrir el detalle de la suscripción más cargada, `Ctrl+Alt+R` actualizar. Se cambian haciendo clic en el campo y pulsando la combinación; si otra app ya la usa, Ajustes te lo dice.
-- **Ocultar automáticamente** (Ajustes, por defecto desactivado): queda una franja de 5 px en el borde; aparece al acercar el ratón o cuando hay un aviso.
-- **Avisos en dos momentos**: (1) **al superar el límite** (umbral configurable, 90 % por defecto; una vez por ventana) y (2) **al reiniciarse** ese límite superado. Cada momento lanza notificación de Windows + un efecto a pantalla completa en una capa transparente que no captura el ratón: **confeti** (por defecto), **glow de peligro** en los bordes o un **efecto propio**: un vídeo WebM (VP9) con alfa o una imagen animada GIF/WebP/APNG, distinto para cada momento, en tamaño pequeño, mediano o pantalla completa y con sonido opcional. Botón «Probar» en Ajustes.
-- **Bandeja**: clic izquierdo muestra u oculta; menú con «Actualizar ahora», «Ajustes…» y «Salir». El tooltip resume el % más alto de cada proveedor.
-- **Tamaño** (Ajustes › General): deslizador de 32 a 80 px (por defecto 48). Se aplica al momento; la tira (asa, iconos, bordes) y el panel de detalle (ancho, textos, barras y padding) escalan con él. Por debajo de 40 px se muestran como mucho dos anillos para que el logo se siga viendo.
-- **Color** (Ajustes › General): eliges el color base con las muestras o con el selector RGB libre; es el del anillo exterior y la primera barra. Los otros dos tonos (casi blanco y uno intermedio) se calculan solos, y si eliges un color demasiado oscuro para verse sobre negro se aclara lo justo. Afecta a anillos, barras, sus marcas de color y los brillos (glow de anillos y barras al 90 %, halo del círculo activo y borde al arrastrar); los avisos (porcentajes ≥ 70 %, punto rojo) siguen en rojo para que no pierdan su significado. Por defecto, el rojo egdev.
-- **Círculos pequeños** (Ajustes): un solo anillo por suscripción, con el límite más cercano.
-- **Logos** en `src/assets/logos/`: `claude.svg`, `openai.svg`, `nan.svg`, `gemini.svg`, `cursor.svg`, `microsoft-copilot.svg` (Copilot) y `openrouter.svg`. Claude y OpenAI se reutilizan para sus APIs, que llevan una etiqueta «API» bajo el logo. Cada SVG se inserta con sus `id` y clases prefijados para que no choquen entre sí. Si falta alguno, se muestra un monograma.
-- **Ajustes › Proveedores en pestañas**: una rejilla de pestañas con logo, nombre y un punto de estado (verde = activo, ámbar = falta configurar o iniciar sesión, gris = desactivado). Al pulsar una se abre solo la configuración de ese proveedor; Ajustes recuerda la última pestaña abierta.
-- Si un ciclo falla (red, 429…), se mantienen los últimos datos con la etiqueta `caché`.
+## Scripts
 
-## Cómo obtiene los datos cada proveedor
+| Comando | Función |
+| --- | --- |
+| `npm run dev` | Servidor de desarrollo del frontend |
+| `npm run build` | Comprobar tipos y compilar el frontend |
+| `npm run app:dev` | Ejecutar la app de escritorio con hot reload |
+| `npm run app:build` | Compilar un instalador local |
+| `npm run typecheck` | Comprobar TypeScript |
+| `npm test` | Tests de Vitest |
+| `cd src-tauri; cargo test` | Tests de Rust |
+| `npm run bump x.y.z` | Actualizar la versión |
+| `npm run setup:signing` | Preparar la firma: crea claves y puede subir secretos a GitHub |
+| `npm run app:release` | Compilar una actualización firmada; requiere credenciales de firma |
 
-| Proveedor | Login | Fuente | Oficial |
-|---|---|---|---|
-| Claude Pro/Max | OAuth del CLI oficial (`claude` → `/login`) | `GET api.anthropic.com/api/oauth/usage` con la sesión de `~/.claude/.credentials.json` | ❌ No documentado |
-| ChatGPT · Codex | OAuth del CLI oficial (`codex login`) | `GET chatgpt.com/backend-api/wham/usage` con la sesión de `~/.codex/auth.json` | ❌ No documentado |
-| NaN Builders | Cuenta (enlace por correo, como `nan auth login --email`) o API key | Con cuenta: `cloud-api.nan.builders/api/usage/quota` y `/api/metrics/usage`, lo mismo que el dashboard. Con key: `/v1/usage` + cuotas publicadas | ⚠️ Panel no documentado / API oficial |
-| Gemini (AI Pro / Code Assist) | Login de Google de Gemini CLI (`gemini`) | `cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota` con la sesión de `~/.gemini/oauth_creds.json` (cuotas diarias por modelo) | ❌ No documentado |
-| Cursor | Sesión de la app de Cursor | `cursor.com/api/usage-summary` con el token de `state.vscdb` (solo lectura) | ❌ No documentado |
-| GitHub Copilot | Token fine-grained (permiso «Plan»: lectura) | `GET /users/{usuario}/settings/billing/premium_request/usage` (peticiones premium del mes frente a la cuota de tu plan) | ✅ |
-| OpenRouter | API key | `GET /api/v1/key` y `/api/v1/credits` (gasto del mes/día, límite de la key, saldo) | ✅ |
-| Anthropic API | Admin API key | `GET /v1/organizations/cost_report` (gasto del mes) | ✅ |
-| OpenAI API | Admin key | `GET /v1/organization/costs` (gasto del mes) | ✅ |
+## Arquitectura
 
-### Por qué no hay un «Login con Claude/OpenAI» propio
+React 19 y TypeScript gestionan el widget, los ajustes y los overlays. Tauri 2 y Rust gestionan las ventanas, las consultas a proveedores, la configuración local, el historial y el Administrador de credenciales de Windows.
 
-- **Anthropic** no permite registrar clientes OAuth de terceros: desde febrero de 2026 sus condiciones dicen que el OAuth de los planes Free/Pro/Max es exclusivo de Claude Code y Claude.ai. Por eso la app **no** se hace pasar por Claude Code: el login lo hace el CLI oficial y la app solo **lee** la sesión que este guarda para consultar el porcentaje de uso. Es una zona gris (lo mismo que hacen herramientas como `ccusage`), así que úsalo sabiendo que el endpoint puede cambiar o dejar de estar permitido.
-- **OpenAI** tampoco ofrece OAuth público para Codex; mismo enfoque con `codex login`.
-- Las **APIs de coste** (Anthropic y OpenAI) solo aceptan Admin keys, no OAuth.
-- **Gemini**: el token de Google dura ~1 h. Si ha caducado, la app lo renueva **en memoria** con el refresh token y el cliente OAuth público de Gemini CLI (app instalada); no escribe en los ficheros de la CLI. Es la misma zona gris que con Claude.
-- **Cursor**: se lee el token de la app de Cursor en solo lectura (o uno pegado a mano en Ajustes) y se consulta su endpoint interno.
-- **NaN Builders**: la forma más completa es conectar la cuenta en Ajustes › NaN. Se usa el mismo acceso que la CLI oficial: NaN te manda un enlace de un solo uso, lo pegas (sin abrirlo) y la app guarda la cookie de sesión en el Administrador de credenciales. Con ella lee los mismos endpoints que tu dashboard (no documentados: pueden cambiar). Como alternativa, la API key usa el `/v1/usage` oficial; «Probar la API» enseña la respuesta en crudo.
+- `src/Widget.tsx` y `src/DetailPanel.tsx`: tira y detalle de consumo.
+- `src/Settings.tsx` y `src/Overlay.tsx`: ajustes y efectos de aviso.
+- `src/lib/`: paleta, ritmo, orden, actualizaciones y tests.
+- `src-tauri/src/providers/`: integraciones con proveedores.
+- `src-tauri/src/history.rs`, `config.rs` y `secrets.rs`: datos locales y credenciales.
 
-### Tokens
+### Proveedores compatibles
 
-- La app **nunca refresca** los tokens OAuth: hacerlo rotaría el refresh token y podría cerrar la sesión del CLI. Si caduca, el widget muestra «Iniciar sesión», que abre el CLI y este la renueva solo.
-- Las API keys se guardan en el **Administrador de credenciales de Windows** (servicio `es.egdev.quorb`), nunca en disco ni en el frontend.
-- La configuración (sin secretos) está en `%APPDATA%\es.egdev.quorb\config.json`.
+| Proveedor | Datos | Conexión |
+| --- | --- | --- |
+| Claude Pro / Max | Límites de sesión y semanales | Login oficial de Claude Code |
+| ChatGPT Plus / Pro · Codex | Límites de sesión y semanales | Login oficial de Codex CLI |
+| Gemini | Cuota diaria por modelo | Login de Gemini CLI |
+| Cursor | Consumo del plan y gasto bajo demanda | Sesión de la app en solo lectura |
+| GitHub Copilot | Peticiones premium | Token fine-grained con permiso Plan de lectura |
+| OpenRouter | Gasto, límite de la key y créditos | API key |
+| NaN Builders | Cuota del plan y tokens diarios | Enlace por correo o API key |
+| Anthropic API / OpenAI API | Coste mensual | Admin API keys |
 
-### WSL
+Algunas integraciones usan endpoints no documentados, que pueden cambiar o dejar de funcionar. Copilot, OpenRouter y las APIs de coste usan APIs oficiales; NaN combina la API documentada con endpoints no documentados del dashboard.
 
-Si usas Claude Code o Codex dentro de WSL, pon la ruta en Ajustes, por ejemplo:
+### Funcionalidades
 
-```
-\\wsl.localhost\Ubuntu\home\TU_USUARIO\.claude\.credentials.json
-\\wsl.localhost\Ubuntu\home\TU_USUARIO\.codex\auth.json
-```
+- Arrastrad la tira a cualquier borde; en los laterales se coloca en vertical.
+- Consultad porcentajes, reinicios, plan y gasto al pasar el ratón.
+- Revisad el ritmo de consumo y el historial local de 24 horas, 7 días o 30 días.
+- Recibid notificaciones de Windows y efectos configurables al superar el umbral y al reiniciarse los límites.
+- Ajustad tamaño, acento RGB, opacidad, orden, proveedores ocultos y ocultación automática.
+- Usad atajos globales reasignables: `Ctrl+Alt+U`, `Ctrl+Alt+I`, `Ctrl+Alt+R`.
+- Actualizad desde releases firmadas de GitHub cuando se publiquen; la app consulta al arrancar y cada seis horas.
 
-Y cambia el comando de login a `wsl claude` / `wsl codex login`.
+<details>
+<summary>Vista visual — ilustraciones promocionales, no capturas directas</summary>
 
-> Si Codex está configurado para guardar credenciales en el llavero del sistema (`cli_auth_credentials_store = "keyring"`), no habrá `auth.json`: vuelve al modo fichero para que el widget pueda leerlo.
+<img src="./.github/assets/01-cuotas.png" alt="Vista de consumo" width="100%" />
 
-## Publicar una versión y actualizaciones automáticas
+<img src="./.github/assets/02-detalle.png" alt="Detalle de consumo" width="100%" />
 
-### Preparación (una sola vez)
+<img src="./.github/assets/03-ritmo.png" alt="Ritmo e historial" width="100%" />
 
-Crea el repo en GitHub (`egdev6/quorb`) y, si tienes [GitHub CLI](https://cli.github.com/), inicia sesión con `gh auth login`. Después:
+<img src="./.github/assets/04-vertical.png" alt="Tira vertical" width="100%" />
 
-```powershell
-npm install
-npm run setup:signing
-```
+<img src="./.github/assets/05-colores.png" alt="Colores de acento" width="100%" />
 
-El script:
+<img src="./.github/assets/06-atajos.png" alt="Atajos globales" width="100%" />
 
-1. Genera la clave de firma en `%USERPROFILE%\.tauri\quorb.key` (te pide una contraseña; si ya existe, la reutiliza y nunca la sobrescribe). **Guarda una copia de la clave y su contraseña**: si la pierdes, las versiones instaladas no aceptarán actualizaciones firmadas con otra.
-2. Pega la clave pública en `src-tauri/tauri.conf.json`.
-3. Sube `TAURI_SIGNING_PRIVATE_KEY` y `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` como secretos del repo con `gh`. Sin `gh`, te dice dónde pegarlos a mano.
-4. Mueve `docs/mover-a-.github` a `.github` (workflow de releases y plantillas de issues).
+<img src="./.github/assets/09-apariencia.png" alt="Apariencia" width="100%" />
 
-### Compilar el instalador en local
+<img src="./.github/assets/10-proveedores.png" alt="Proveedores" width="100%" />
 
-- `npm run app:build`: instalador `-setup.exe` y `.msi` **sin** los ficheros del updater. No necesita claves; sirve para probar.
-- `npm run app:release`: igual, pero firma la actualización (necesita las dos variables `TAURI_SIGNING_PRIVATE_KEY*`). Es lo que hace el workflow de GitHub.
+</details>
 
-Los instaladores quedan en `src-tauri\target\release\bundle\nsis` y `\msi`.
+### Privacidad y datos locales
 
-### Cada versión
+Las API keys y la sesión de NaN se guardan en el Administrador de credenciales de Windows. Los archivos de sesión de las herramientas oficiales se leen sin escribir en ellos ni rotar refresh tokens. Gemini renueva su token de acceso de corta duración en memoria. Si caduca el login de una CLI, iniciad sesión de nuevo con la herramienta oficial.
 
-```powershell
-npm run bump 0.2.0          # package.json (lo lee Tauri) y Cargo.toml
-git commit -am "release v0.2.0"
-git tag v0.2.0
-git push --follow-tags
-```
+La configuración y el historial se guardan bajo `%APPDATA%\es.egdev.quorb`. Quorb consulta directamente los endpoints de los proveedores; no requiere un backend separado. El historial cubre hasta 30 días.
 
-El workflow `.github/workflows/release.yml` pasa los tests, compila en Windows, firma, crea la release con el `-setup.exe`, el `.msi` y `latest.json`. Las apps instaladas leen `https://github.com/egdev6/quorb/releases/latest/download/latest.json` y se actualizan solas. Las notas de la release salen en Ajustes.
+Para sesiones en WSL, configurad las rutas de credenciales en Ajustes, por ejemplo `\\wsl.localhost\Ubuntu\home\YOUR_USER\.codex\auth.json`, y el comando de login `wsl codex login` o `wsl claude` según corresponda.
 
-## Estructura
+### Hoja de ruta
 
-```
-src/                       React (una build; cada ventana pinta su vista según su label)
-  Widget.tsx               tira pegada al borde + panel al hover + arrastre con imán + avisos + auto-ocultar + reordenar
-  Overlay.tsx              efectos a pantalla completa (confeti, glow, vídeo) en una ventana transparente
-  Settings.tsx             ventana de ajustes
-  components/              ProviderGauge + RingGauge (círculos de la tira), ProviderLogo, ProviderCard + MeterBar (panel al pasar el ratón)
-  assets/logos/            logos de cada suscripción (los pones tú)
-  lib/                     api, tipos, formato, dock, paleta, avisos (alerts.ts), ritmo (pace.ts), orden (order.ts), actualizaciones (updater.ts) + tests
-src-tauri/
-  src/lib.rs               ventanas, bandeja, comandos Tauri
-  src/providers/           claude, codex, gemini, cursor, copilot, nan (+ nan_cloud), openrouter, anthropic_api, openai_api
-  src/history.rs           historial local para gráficas y ritmo
-  src/secrets.rs           Windows Credential Manager (keyring)
-  src/config.rs            config persistente
-  src/login.rs             abre el login OAuth del CLI en una terminal
-  capabilities/default.json
-```
+La firma de código y distribución por winget, el modo click-through, la ventana de cuatro horas de GLM en NaN y las builds de macOS/Linux siguen siendo objetivos, no funcionalidades actuales.
 
-### Añadir un proveedor
+## Contribuir
 
-1. Crea `src-tauri/src/providers/<nombre>.rs` con `pub async fn fetch(...) -> UsageReport` (nunca devuelve `Err`: usa `report.fail(status, msg)`).
-2. Añade su config en `config.rs` y su rama en `providers::fetch_all`.
-3. Refleja los campos en `src/lib/types.ts` y añade la sección en `Settings.tsx`.
+Se aceptan issues y PRs, especialmente nuevas integraciones. Cada proveedor vive en `src-tauri/src/providers/<name>.rs`; hay que conectar también su configuración y sus ajustes en el frontend.
 
-## Datos locales
+La documentación técnica existente se conserva en la [guía original en inglés](./docs/original-readme.en.md) y la [guía original en español](./docs/original-readme.es.md). Son copias históricas: sus enlaces relativos e instrucciones de releases pueden necesitar actualización antes de reutilizarlas.
 
-- `%APPDATA%\es.egdev.quorb\config.json`: configuración.
-- `%APPDATA%\es.egdev.quorb\history.json`: historial (30 días, un punto cada ~10 min por medidor).
-- Administrador de credenciales de Windows: API keys y sesión de NaN.
-- Si vienes de la versión llamada «egdev AI Usage» (`es.egdev.ai-usage`), la configuración, el historial y las claves se copian solos al nuevo nombre la primera vez que se abre.
+Consultad [CONTRIBUTING.md](./CONTRIBUTING.md) para el entorno local, los pasos de integración de proveedores y el flujo de publicación para mantenedores.
 
-## Pendiente / ideas
+## Recursos
 
-- Ventana de 4 h de GLM 5.3 (el panel de NaN expone `windowHours`, pero no el consumo dentro de la ventana).
-- Modo «click-through» (que los clics atraviesen el widget).
+- [Código fuente](https://github.com/egdev6/quorb)
+- [Issues](https://github.com/egdev6/quorb/issues)
+- [Releases, cuando se publiquen](https://github.com/egdev6/quorb/releases)
+- [Requisitos de Tauri](https://v2.tauri.app/start/prerequisites/)
 
 ## Licencia
 
-[MIT](LICENSE) © Enrique Gómez Navarro ([@egdev6](https://github.com/egdev6))
+[MIT](./LICENSE) © Enrique Gómez Navarro. Quorb no está afiliado con Anthropic, OpenAI, Google, Anysphere, GitHub, OpenRouter ni NaN Builders; las marcas pertenecen a sus respectivos propietarios.
+
+<!-- egdev:contact:start -->
+## Contacto
+<div align="center">
+
+[![Web](https://img.shields.io/badge/egdev.es-FF0036?style=for-the-badge&logo=googlechrome&logoColor=white)](https://egdev.es)
+[![YouTube](https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/@egdev6)
+[![Twitch](https://img.shields.io/badge/Twitch-9146FF?style=for-the-badge&logo=twitch&logoColor=white)](https://twitch.tv/egdev6)
+[![X](https://img.shields.io/badge/X-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/egdev66)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/egdev6/)
+[![Instagram](https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white)](https://www.instagram.com/egdev6/)
+[![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/egdev6)
+![Discord](https://img.shields.io/badge/Egdev5285-5865F2?style=for-the-badge&logo=discord&logoColor=white)
+[![Gmail](https://img.shields.io/badge/Gmail-EA4335?style=for-the-badge&logo=gmail&logoColor=white)](mailto:egdev6@gmail.com)
+
+</div>
+<!-- egdev:contact:end -->
+
+<!-- egdev:footer:start -->
+---
+
+<div align="center">
+
+**⭐ Si este proyecto te resulta útil, considera darle una estrella en GitHub ⭐**
+
+</div>
+<!-- egdev:footer:end -->
