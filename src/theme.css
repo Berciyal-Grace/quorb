@@ -163,6 +163,7 @@ html[data-window='settings'] body { background: var(--color-bg-canvas); color: v
   color: var(--color-action-primary-solid-fg);
   font: 800 22px/1 var(--font-display);
 }
+.q-brand__logo { width: 36px; height: 36px; flex: none; object-fit: contain; }
 .q-brand__name { display: block; font: 800 24px/1 var(--font-display); text-transform: uppercase; }
 .q-brand__ver { display: block; margin-top: 2px; font-size: 12px; color: var(--color-fg-muted); }
 .q-settings__nav .eg-menu__item { width: 100%; border: 0; background: none; text-align: left; }
