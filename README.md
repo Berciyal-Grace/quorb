@@ -28,8 +28,6 @@ Quorb brings your AI limits into one local desktop utility. Check how much you h
 
 Its edge-docked widget is compact, transparent and always on top. Hover over a provider for its limits, plan, spending, pace and history.
 
-<p align="center"><img src="./.github/assets/project-image.png" alt="Promotional illustration of Quorb's usage strip" width="100%" /></p>
-
 <!-- egdev:stack:start -->
 ## Stack
 <div align="center">
@@ -119,26 +117,31 @@ Some integrations use undocumented endpoints, which may change or stop working. 
 - Use remappable global shortcuts: `Ctrl+Alt+U`, `Ctrl+Alt+I`, `Ctrl+Alt+R`.
 - Update from signed GitHub releases when published; the app checks on startup and every six hours.
 
-<details>
-<summary>Visual overview — promotional illustrations, not raw screenshots</summary>
+### Visual overview
 
-<img src="./.github/assets/01-cuotas.png" alt="Usage overview" width="100%" />
+Promotional illustrations, not raw screenshots.
 
-<img src="./.github/assets/02-detalle.png" alt="Usage detail" width="100%" />
-
-<img src="./.github/assets/03-ritmo.png" alt="Pace and history" width="100%" />
-
-<img src="./.github/assets/04-vertical.png" alt="Vertical strip" width="100%" />
-
-<img src="./.github/assets/05-colores.png" alt="Accent colors" width="100%" />
-
-<img src="./.github/assets/06-atajos.png" alt="Global shortcuts" width="100%" />
-
-<img src="./.github/assets/09-apariencia.png" alt="Appearance" width="100%" />
-
-<img src="./.github/assets/10-proveedores.png" alt="Providers" width="100%" />
-
-</details>
+<table width="100%">
+  <tr>
+    <td width="50%" align="center"><strong>Usage overview</strong><br /><img src="./.github/assets/01-cuotas.png" alt="Usage overview with quotas and remaining capacity" width="100%" /></td>
+    <td width="50%" align="center"><strong>Usage detail</strong><br /><img src="./.github/assets/02-detalle.png" alt="Usage detail panel" width="100%" /></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><strong>Pace and history</strong><br /><img src="./.github/assets/03-ritmo.png" alt="Consumption pace and history" width="100%" /></td>
+    <td width="50%" align="center"><strong>Vertical strip</strong><br /><img src="./.github/assets/04-vertical.png" alt="Vertical strip on a screen edge" width="100%" /></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><strong>Accent colors</strong><br /><img src="./.github/assets/05-colores.png" alt="Accent color options" width="100%" /></td>
+    <td width="50%" align="center"><strong>Global shortcuts</strong><br /><img src="./.github/assets/06-atajos.png" alt="Remappable global shortcuts" width="100%" /></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><strong>Appearance</strong><br /><img src="./.github/assets/09-apariencia.png" alt="Size, opacity and auto-hide settings" width="100%" /></td>
+    <td width="50%" align="center"><strong>Providers</strong><br /><img src="./.github/assets/10-proveedores.png" alt="Provider list and visibility" width="100%" /></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><strong>Configurable alerts</strong><br /><img src="./.github/assets/quorb-configura-avisos.png" alt="Configurable alerts with confetti, edge glow or custom effects" width="50%" /></td>
+  </tr>
+</table>
 
 ### Privacy and local data
 

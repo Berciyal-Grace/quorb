@@ -28,8 +28,6 @@ Quorb reúne tus límites de IA en una herramienta local de escritorio. Podéis 
 
 Su widget se pega al borde de la pantalla: es compacto, transparente y permanece por encima de las ventanas. Al pasar el ratón por un proveedor, muestra sus límites, plan, gasto, ritmo e historial.
 
-<p align="center"><img src="./.github/assets/project-image.png" alt="Ilustración promocional de la tira de consumo de Quorb" width="100%" /></p>
-
 <!-- egdev:stack:start -->
 ## Stack
 <div align="center">
@@ -119,26 +117,31 @@ Algunas integraciones usan endpoints no documentados, que pueden cambiar o dejar
 - Usad atajos globales reasignables: `Ctrl+Alt+U`, `Ctrl+Alt+I`, `Ctrl+Alt+R`.
 - Actualizad desde releases firmadas de GitHub cuando se publiquen; la app consulta al arrancar y cada seis horas.
 
-<details>
-<summary>Vista visual — ilustraciones promocionales, no capturas directas</summary>
+### Vista visual
 
-<img src="./.github/assets/01-cuotas.png" alt="Vista de consumo" width="100%" />
+Ilustraciones promocionales, no capturas directas.
 
-<img src="./.github/assets/02-detalle.png" alt="Detalle de consumo" width="100%" />
-
-<img src="./.github/assets/03-ritmo.png" alt="Ritmo e historial" width="100%" />
-
-<img src="./.github/assets/04-vertical.png" alt="Tira vertical" width="100%" />
-
-<img src="./.github/assets/05-colores.png" alt="Colores de acento" width="100%" />
-
-<img src="./.github/assets/06-atajos.png" alt="Atajos globales" width="100%" />
-
-<img src="./.github/assets/09-apariencia.png" alt="Apariencia" width="100%" />
-
-<img src="./.github/assets/10-proveedores.png" alt="Proveedores" width="100%" />
-
-</details>
+<table width="100%">
+  <tr>
+    <td width="50%" align="center"><strong>Vista de consumo</strong><br /><img src="./.github/assets/01-cuotas.png" alt="Vista de consumo con cuotas y capacidad disponible" width="100%" /></td>
+    <td width="50%" align="center"><strong>Detalle de consumo</strong><br /><img src="./.github/assets/02-detalle.png" alt="Panel de detalle de consumo" width="100%" /></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><strong>Ritmo e historial</strong><br /><img src="./.github/assets/03-ritmo.png" alt="Ritmo de consumo e historial" width="100%" /></td>
+    <td width="50%" align="center"><strong>Tira vertical</strong><br /><img src="./.github/assets/04-vertical.png" alt="Tira vertical en un borde de pantalla" width="100%" /></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><strong>Colores de acento</strong><br /><img src="./.github/assets/05-colores.png" alt="Opciones de color de acento" width="100%" /></td>
+    <td width="50%" align="center"><strong>Atajos globales</strong><br /><img src="./.github/assets/06-atajos.png" alt="Atajos globales reasignables" width="100%" /></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><strong>Apariencia</strong><br /><img src="./.github/assets/09-apariencia.png" alt="Ajustes de tamaño, opacidad y ocultación automática" width="100%" /></td>
+    <td width="50%" align="center"><strong>Proveedores</strong><br /><img src="./.github/assets/10-proveedores.png" alt="Lista de proveedores y visibilidad" width="100%" /></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><strong>Avisos configurables</strong><br /><img src="./.github/assets/quorb-configura-avisos.png" alt="Avisos configurables con confeti, glow en los bordes o efectos propios" width="50%" /></td>
+  </tr>
+</table>
 
 ### Privacidad y datos locales
 
