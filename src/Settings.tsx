@@ -9,6 +9,7 @@ import { ORB_SIZE, type AlertMoment, type AppConfig, type Effect, type MediaSize
 import { ACCENT_PRESETS, DEFAULT_ACCENT, derivePalette, normalizeHex } from './lib/palette';
 import { comboFromEvent, prettyCombo } from './lib/shortcuts';
 import { ProviderLogo } from './components/ProviderLogo';
+import quorbLogo from './assets/quorb-logo.png';
 import { checkForUpdate, installUpdate, updateErrorText, type UpdatePhase } from './lib/updater';
 
 const LINKS = {
@@ -668,7 +669,7 @@ export function Settings() {
     <div className="q-settings">
       <aside className="q-settings__nav" aria-label="Quorb">
         <div className="q-brand">
-          <span className="q-brand__mark" aria-hidden="true">Q</span>
+          <img className="q-brand__logo" src={quorbLogo} alt="" aria-hidden="true" />
           <span>
             <span className="q-brand__name">Quorb</span>
             <span className="q-brand__ver">Ajustes</span>
