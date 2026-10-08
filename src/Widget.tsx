@@ -9,7 +9,7 @@ import { mergeReports, peakMeter, reportSummary, trayTooltip } from './lib/forma
 import { derivePalette } from './lib/palette';
 import { detectAlerts, effectFor, notificationText, type AlertMemory } from './lib/alerts';
 import { applyOrder, dropIndex, moveTo, OFFICIAL_USAGE_URL } from './lib/order';
-import { contains, isEdge, isVertical, nearestEdge, panelRect, stripRect, union, type Edge, type Rect } from './lib/dock';
+import { contains, isEdge, isVertical, nearestEdge, panelRect, panelWindowRect, stripRect, type Edge, type Rect } from './lib/dock';
 import { ORB_SIZE, type AppConfig, type UsageReport } from './lib/types';
 import { checkForUpdate, installUpdate, shouldNotifyUpdate, updateErrorText, UPDATE_EVERY_MS, UPDATE_FIRST_DELAY_MS, type UpdatePhase } from './lib/updater';
 import { ProviderCard } from './components/ProviderCard';
@@ -427,10 +427,12 @@ export function Widget() {
               : { x: a.x + a.w - PEEK, y: s.y, w: PEEK, h: s.h };
     } else {
       const anchor = (vertical ? s.y : s.x) + anchorRel;
-      const p = active
-        ? panelRect(geo.area, edge, s, anchor, measured?.w ?? panelWidth, measured?.h ?? Math.round(panelWidth * 0.7))
-        : null;
-      win = union(s, p);
+      const pw = measured?.w ?? panelWidth;
+      const ph = measured?.h ?? Math.round(panelWidth * 0.7);
+      const p = active ? panelRect(geo.area, edge, s, anchor, pw, ph) : null;
+      // Reserve the panel's range along the strip: changing circles only moves the panel,
+      // not the native window origin or the strip's local position.
+      win = p ? panelWindowRect(geo.area, edge, s, pw, ph) : s;
       if (p) panelPos = { x: p.x - win.x, y: p.y - win.y };
     }
     setPos({ strip: { x: s.x - win.x, y: s.y - win.y }, panel: panelPos });

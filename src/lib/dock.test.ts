@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nearestEdge, panelRect, stripRect, union } from './dock';
+import { nearestEdge, panelRect, panelWindowRect, stripRect, union } from './dock';
 
 const area = { x: 0, y: 0, w: 1920, h: 1040 }; // pantalla menos barra de tareas
 
@@ -25,6 +25,33 @@ describe('dock', () => {
     expect(p).toEqual({ x: 1532, y: 0, w: 300, h: 260 });
     const left = stripRect(area, 'left', 0.5, 80, 400);
     expect(panelRect(area, 'left', left, 520, 300, 200).x).toBe(88);
+  });
+
+  it.each(['top', 'bottom', 'left', 'right'] as const)('keeps window bounds stable between circles on %s', (edge) => {
+    const vertical = edge === 'left' || edge === 'right';
+    const strip = stripRect(area, edge, 0.5, vertical ? 80 : 400, vertical ? 400 : 80);
+    const start = vertical ? strip.y : strip.x;
+    const end = start + (vertical ? strip.h : strip.w);
+    const bounds = panelWindowRect(area, edge, strip, 300, 200);
+    for (const anchor of [start, (start + end) / 2, end]) {
+      const panel = panelRect(area, edge, strip, anchor, 300, 200);
+      expect(union(bounds, panel)).toEqual(bounds);
+    }
+    expect(bounds.x).toBeGreaterThanOrEqual(area.x);
+    expect(bounds.y).toBeGreaterThanOrEqual(area.y);
+    expect(bounds.x + bounds.w).toBeLessThanOrEqual(area.x + area.w);
+    expect(bounds.y + bounds.h).toBeLessThanOrEqual(area.y + area.h);
+  });
+
+  it('keeps the top strip offset fixed as panel height and hovered circle change', () => {
+    const strip = stripRect(area, 'top', 0.5, 400, 80);
+    const firstPanel = panelRect(area, 'top', strip, strip.x + 24, 300, 160);
+    const lastPanel = panelRect(area, 'top', strip, strip.x + strip.w - 24, 300, 360);
+    // The old tight union changed the native origin at the first circle.
+    expect(union(strip, firstPanel).x).not.toBe(union(strip, lastPanel).x);
+    const small = panelWindowRect(area, 'top', strip, 300, 160);
+    const tall = panelWindowRect(area, 'top', strip, 300, 360);
+    expect({ x: small.x, y: small.y, w: small.w }).toEqual({ x: tall.x, y: tall.y, w: tall.w });
   });
 
   it('unions rects', () => {

@@ -57,6 +57,13 @@ export function panelRect(area: Rect, edge: Edge, strip: Rect, anchor: number, w
   }
 }
 
+/** Bounds for every panel anchor along the strip, so hovering does not move the window origin. */
+export function panelWindowRect(area: Rect, edge: Edge, strip: Rect, w: number, h: number): Rect {
+  const start = isVertical(edge) ? strip.y : strip.x;
+  const end = start + (isVertical(edge) ? strip.h : strip.w);
+  return union(union(strip, panelRect(area, edge, strip, start, w, h)), panelRect(area, edge, strip, end, w, h));
+}
+
 export function union(a: Rect, b?: Rect | null): Rect {
   if (!b) return a;
   const x = Math.min(a.x, b.x);
