@@ -32,6 +32,38 @@ describe('isDirty', () => {
   });
 });
 
+describe('isDirty con campos vivos', () => {
+  const base = config();
+
+  it('no se ensucia si solo cambia un campo vivo (antes y tras el autosave)', () => {
+    expect(isDirty(base, { ...base, orbSize: 60 })).toBe(false);
+    expect(isDirty(base, { ...base, accentColor: '#00aaff' })).toBe(false);
+    // Autosave canónico ya confirmado: la base trae el valor aplicado.
+    expect(isDirty({ ...base, orbSize: 60 }, { ...base, orbSize: 60 })).toBe(false);
+  });
+
+  it('sigue sucio con una edición normal junto a un cambio vivo', () => {
+    expect(isDirty(base, { ...base, refreshMinutes: 30, orbSize: 60 })).toBe(true);
+  });
+
+  it('queda limpio al revertir la edición manual con un cambio vivo pendiente', () => {
+    const draft = { ...base, refreshMinutes: 30, orbSize: 60 };
+    expect(isDirty(base, draft)).toBe(true);
+    expect(isDirty(base, { ...draft, refreshMinutes: base.refreshMinutes })).toBe(false);
+  });
+
+  it('la llegada del valor vivo canónico no limpia otra suciedad manual', () => {
+    const draft = { ...base, refreshMinutes: 30, orbSize: 60 };
+    expect(isDirty({ ...base, orbSize: 60 }, draft)).toBe(true);
+    expect(isDirty({ ...base, orbSize: 60 }, { ...draft, refreshMinutes: base.refreshMinutes })).toBe(false);
+  });
+
+  it('no es sucio sin base canónica', () => {
+    expect(isDirty(null, { ...base, orbSize: 60 })).toBe(false);
+    expect(isDirty({ ...base, orbSize: 60 }, null)).toBe(false);
+  });
+});
+
 describe('liveSaveConfig', () => {
   it('persists only the live field from the canonical baseline', () => {
     const base = config();
