@@ -5,7 +5,7 @@ import type { AppConfig } from './types';
 // (tamaño/color) se persisten partiendo de la base, no del borrador.
 
 /** Igualdad estructural profunda para valores de config serializables a JSON. */
-export function deepEqual(a: unknown, b: unknown): boolean {
+function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
   if (Array.isArray(a) || Array.isArray(b)) {
@@ -19,9 +19,29 @@ export function deepEqual(a: unknown, b: unknown): boolean {
   return keys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && deepEqual(left[key], right[key]));
 }
 
-/** ¿Hay cambios sin guardar? Sin base (aún cargando) no se considera sucio. */
+/**
+ * Campos que se aplican al momento con `liveSave` (tamaño y color). No cuentan
+ * como cambios manuales sin guardar: el botón «Guardar cambios» solo refleja lo
+ * que espera confirmación explícita.
+ */
+const LIVE_FIELDS = ['orbSize', 'accentColor'] as const;
+
+/** Copia de la config sin los campos vivos, para comparar solo lo manual. */
+function withoutLiveFields(cfg: AppConfig): Omit<AppConfig, (typeof LIVE_FIELDS)[number]> {
+  const rest: Record<string, unknown> = { ...cfg };
+  for (const key of LIVE_FIELDS) delete rest[key];
+  return rest as Omit<AppConfig, (typeof LIVE_FIELDS)[number]>;
+}
+
+/**
+ * ¿Hay cambios manuales sin guardar? Sin base (aún cargando) no se considera
+ * sucio. Los campos vivos (`liveSave`) se ignoran porque se persisten solos:
+ * no deben activar «Guardar cambios» ni siquiera mientras su autosave está en
+ * vuelo y la base canónica todavía no los refleja.
+ */
 export function isDirty(baseline: AppConfig | null, draft: AppConfig | null): boolean {
-  return !!baseline && !!draft && !deepEqual(baseline, draft);
+  if (!baseline || !draft) return false;
+  return !deepEqual(withoutLiveFields(baseline), withoutLiveFields(draft));
 }
 
 /**
