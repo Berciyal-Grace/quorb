@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// Solo se usa process.env aquí; así no hace falta instalar @types/node.
+declare const process: { env: Record<string, string | undefined> };
+
 // https://v2.tauri.app/start/frontend/vite/
 export default defineConfig({
   plugins: [react()],

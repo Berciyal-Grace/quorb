@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
@@ -20,12 +20,15 @@ const LINKS = {
   openrouterKeys: 'https://openrouter.ai/settings/keys',
   geminiCli: 'https://github.com/google-gemini/gemini-cli',
   releases: 'https://github.com/egdev6/quorb/releases',
+  repo: 'https://github.com/egdev6/quorb',
+  issues: 'https://github.com/egdev6/quorb/issues/new?template=provider-request.md',
+  web: 'https://egdev.es',
 };
 
-function Section({ title, kicker, children }: { title: string; kicker?: string; children: ReactNode }) {
+function Section({ title, kicker, id, children }: { title: string; kicker?: string; id?: string; children: ReactNode }) {
   return (
-    <section className="s-section">
-      {kicker && <p className="kicker">{kicker}</p>}
+    <section className="q-section" id={id} aria-label={title}>
+      {kicker && <p className="eg-eyebrow">{kicker}</p>}
       <h2>{title}</h2>
       {children}
     </section>
@@ -60,42 +63,47 @@ function UpdatesSection({ auto, onAuto }: { auto: boolean; onAuto: (v: boolean) 
   };
 
   return (
-    <Section kicker="Versión" title="Actualizaciones">
-      <div className="s-update">
-        <span className="s-update__version">Quorb {version ? `v${version}` : ''}</span>
-        <button className="btn" disabled={state.phase === 'checking' || state.phase === 'installing'} onClick={checkNow}>
+    <Section title="Versión instalada">
+      {(state.phase === 'available' || state.phase === 'installing') && (
+        <div className="eg-notice eg-notice--info" role="status">
+          <svg className="eg-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+            <path d="M21 3v5h-5" />
+            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+            <path d="M8 16H3v5" />
+          </svg>
+          <span className="eg-notice__text">
+            <b>Hay una versión nueva: {state.info.version}.</b> Se descarga, se comprueba la firma y Quorb se reinicia.
+          </span>
+          <span className="eg-notice__actions">
+            <button type="button" className="eg-btn eg-btn--secondary eg-btn--sm" disabled={state.phase === 'installing'} onClick={install}>
+              {state.phase === 'installing' ? `Instalando${state.progress != null ? ` · ${state.progress} %` : '…'}` : 'Instalar y reiniciar'}
+            </button>
+          </span>
+        </div>
+      )}
+      {state.phase === 'installing' && (
+        <div className="q-update-bar" aria-hidden="true">
+          <span style={{ width: `${state.progress ?? 15}%` }} data-indeterminate={state.progress == null || undefined} />
+        </div>
+      )}
+      {(state.phase === 'available' || state.phase === 'installing') && state.info.notes && <pre className="q-pre">{state.info.notes}</pre>}
+      <div className="q-inline">
+        <span className="q-note">
+          Quorb <b>{version ? `v${version}` : ''}</b>
+          {state.phase === 'none' && ' · estás en la última versión'}
+        </span>
+        <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" disabled={state.phase === 'checking' || state.phase === 'installing'} onClick={checkNow}>
           {state.phase === 'checking' ? 'Buscando…' : 'Buscar ahora'}
         </button>
       </div>
-      {state.phase === 'none' && <small className="s-field__hint">Estás en la última versión.</small>}
-      {state.phase === 'error' && <small className="s-field__hint s-field__hint--warn">{state.message}</small>}
-      {(state.phase === 'available' || state.phase === 'installing') && (
-        <div className="s-update__card">
-          <div className="s-update">
-            <strong>Nueva versión {state.info.version}</strong>
-            <button className="btn btn--accent" disabled={state.phase === 'installing'} onClick={install}>
-              {state.phase === 'installing'
-                ? `Instalando${state.progress != null ? ` · ${state.progress} %` : '…'}`
-                : 'Instalar y reiniciar'}
-            </button>
-          </div>
-          {state.phase === 'installing' && (
-            <div className="s-update__bar" aria-hidden="true">
-              <span style={{ width: `${state.progress ?? 15}%` }} data-indeterminate={state.progress == null || undefined} />
-            </div>
-          )}
-          {state.info.notes && <pre className="s-update__notes">{state.info.notes}</pre>}
-        </div>
-      )}
-      <Toggle
-        label="Buscar actualizaciones automáticamente"
-        hint="Al arrancar y cada 6 h. Si hay una nueva, aparece un icono de descarga en la tira."
-        checked={auto}
-        onChange={onAuto}
-      />
-      <small className="s-field__hint">
-        Las actualizaciones llegan firmadas desde{' '}
-        <button type="button" className="s-link" onClick={() => openUrl(LINKS.releases)}>
+      {state.phase === 'error' && <div className="eg-notice eg-notice--warning eg-notice--sm"><span className="eg-notice__text">{state.message}</span></div>}
+      <Rows>
+        <Toggle label="Buscar actualizaciones solo" hint="Al arrancar y cada 6 h. Si hay una nueva, aparece un icono de descarga en la tira." checked={auto} onChange={onAuto} />
+      </Rows>
+      <small className="eg-field__hint">
+        Llegan firmadas desde{' '}
+        <button type="button" className="q-link" onClick={() => openUrl(LINKS.releases)}>
           GitHub Releases
         </button>
         ; si la firma no coincide, no se instalan.
@@ -106,26 +114,38 @@ function UpdatesSection({ auto, onAuto }: { auto: boolean; onAuto: (v: boolean) 
 
 function Toggle({ label, checked, onChange, hint }: { label: string; checked: boolean; onChange: (v: boolean) => void; hint?: string }) {
   return (
-    <label className="s-toggle">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-      <span className="s-toggle__ui" aria-hidden="true" />
-      <span>
-        {label}
-        {hint && <small>{hint}</small>}
+    <label className="q-row">
+      <span className="q-row__text">
+        <span className="q-row__label">{label}</span>
+        {hint && <span className="q-row__hint">{hint}</span>}
+      </span>
+      <span className="eg-check eg-check--switch">
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       </span>
     </label>
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
+/** Varias filas con interruptor seguidas, separadas por una línea. */
+function Rows({ children }: { children: ReactNode }) {
+  return <div className="q-rows">{children}</div>;
+}
+
+function Field({ label, hint, value, children }: { label: string; hint?: ReactNode; value?: ReactNode; children: ReactNode }) {
   return (
-    <label className="s-field">
-      <span className="s-field__label">{label}</span>
+    <label className={`eg-field${value != null ? ' eg-field--range' : ''}`}>
+      <span className="eg-field__label">
+        {label}
+        {value != null && <output>{value}</output>}
+      </span>
       {children}
-      {hint && <small className="s-field__hint">{hint}</small>}
+      {hint && <small className="eg-field__hint">{hint}</small>}
     </label>
   );
 }
+
+/** Estilo de la pista de un range del DS (--v = parte rellena). */
+const rangeFill = (v: number, min: number, max: number) => ({ '--v': `${((v - min) / (max - min)) * 100}%` }) as CSSProperties;
 
 function Link({ href, children }: { href: string; children: ReactNode }) {
   return (
@@ -163,7 +183,7 @@ function SecretInput({ id, label, configured, onSaved, hint }: { id: SecretKey; 
 
   return (
     <Field label={label} hint={msg ?? hint}>
-      <div className="s-inline">
+      <div className="q-inline">
         <input
           type="password"
           autoComplete="off"
@@ -172,11 +192,11 @@ function SecretInput({ id, label, configured, onSaved, hint }: { id: SecretKey; 
           value={value}
           onChange={(e) => setValue(e.target.value)}
         />
-        <button className="btn btn--accent" disabled={busy || !value.trim()} onClick={() => save(value)}>
+        <button className="eg-btn eg-btn--primary" disabled={busy || !value.trim()} onClick={() => save(value)}>
           Guardar
         </button>
         {configured && (
-          <button className="btn" disabled={busy} onClick={() => save('')} title="Eliminar key">
+          <button className="eg-btn eg-btn--ghost" disabled={busy} onClick={() => save('')} title="Eliminar key">
             Quitar
           </button>
         )}
@@ -207,10 +227,10 @@ function NanConnect({ connected, onChange }: { connected: boolean; onChange: () 
 
   if (connected) {
     return (
-      <div className="s-connected">
-        <span className="s-connected__dot" /> Cuenta de NaN Cloud conectada{msg ? ` · ${msg}` : ''}
+      <div className="q-inline">
+        <span className="eg-status eg-status--success">Cuenta de NaN Cloud conectada{msg ? ` · ${msg}` : ''}</span>
         <button
-          className="btn"
+          className="eg-btn eg-btn--ghost eg-btn--sm"
           disabled={busy}
           onClick={() =>
             run(async () => {
@@ -226,13 +246,13 @@ function NanConnect({ connected, onChange }: { connected: boolean; onChange: () 
   }
 
   return (
-    <div className="s-field">
-      <span className="s-field__label">Conectar tu cuenta (recomendado)</span>
+    <div className="eg-field">
+      <span className="eg-field__label">Conectar tu cuenta (recomendado)</span>
       {step === 'email' ? (
-        <div className="s-inline">
+        <div className="q-inline">
           <input type="email" placeholder="tu@correo.com" value={email} onChange={(e) => setEmail(e.target.value)} />
           <button
-            className="btn btn--accent"
+            className="eg-btn eg-btn--primary"
             disabled={busy || !email.includes('@')}
             onClick={() =>
               run(async () => {
@@ -246,10 +266,10 @@ function NanConnect({ connected, onChange }: { connected: boolean; onChange: () 
           </button>
         </div>
       ) : (
-        <div className="s-inline">
+        <div className="q-inline">
           <input type="text" spellCheck={false} placeholder="https://…nan.builders/…" value={link} onChange={(e) => setLink(e.target.value)} />
           <button
-            className="btn btn--accent"
+            className="eg-btn eg-btn--primary"
             disabled={busy || !link.trim()}
             onClick={() =>
               run(async () => {
@@ -262,12 +282,12 @@ function NanConnect({ connected, onChange }: { connected: boolean; onChange: () 
           >
             Conectar
           </button>
-          <button className="btn" disabled={busy} onClick={() => setStep('email')}>
+          <button className="eg-btn eg-btn--ghost" disabled={busy} onClick={() => setStep('email')}>
             Volver
           </button>
         </div>
       )}
-      <small className="s-field__hint">
+      <small className="eg-field__hint">
         {msg ??
           'Igual que «nan auth login --email»: NaN te manda un enlace de un solo uso. No lo abras en el navegador (se gastaría): cópialo y pégalo aquí. La sesión se guarda en el Administrador de credenciales de Windows y da los mismos datos que tu dashboard.'}
       </small>
@@ -280,10 +300,10 @@ function NanProbe() {
   const [out, setOut] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   return (
-    <details className="s-details">
+    <details className="q-details">
       <summary>Probar la API de NaN con la key</summary>
       <button
-        className="btn"
+        className="eg-btn eg-btn--ghost"
         disabled={busy}
         onClick={async () => {
           setBusy(true);
@@ -298,7 +318,7 @@ function NanProbe() {
       >
         {busy ? 'Consultando…' : 'Ver respuestas de /v1/models y /v1/usage'}
       </button>
-      {out && <pre className="s-pre">{out}</pre>}
+      {out && <pre className="q-pre">{out}</pre>}
     </details>
   );
 }
@@ -344,9 +364,9 @@ function MomentEffect({
 }) {
   return (
     <>
-      <div className="s-inline">
-        <label className="s-field">
-          <span className="s-field__label">Efecto</span>
+      <div className="q-inline">
+        <label className="eg-field">
+          <span className="eg-field__label">Efecto</span>
           <select value={effect} onChange={(e) => onEffect(e.target.value as Effect)}>
             {EFFECT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -356,7 +376,7 @@ function MomentEffect({
           </select>
         </label>
         <button
-          className="btn s-inline__btn"
+          className="eg-btn eg-btn--ghost"
           disabled={effect === 'none' || (effect === 'custom' && !media)}
           onClick={() => testEffect(effect, moment, alerts).catch((e) => onError(String(e)))}
         >
@@ -364,12 +384,12 @@ function MomentEffect({
         </button>
       </div>
       {effect === 'custom' && (
-        <div className="s-field">
-          <span className="s-field__label">Archivo</span>
-          <div className="s-inline">
+        <div className="eg-field">
+          <span className="eg-field__label">Archivo</span>
+          <div className="q-inline">
             <input type="text" readOnly value={fileName(media) ?? ''} placeholder="Ningún archivo" title={media ?? ''} />
             <button
-              className="btn"
+              className="eg-btn eg-btn--ghost"
               onClick={async () => {
                 const file = await openDialog({ multiple: false, directory: false, filters: MEDIA_FILTERS });
                 if (typeof file === 'string') onMedia(file);
@@ -378,7 +398,7 @@ function MomentEffect({
               Elegir…
             </button>
             {media && (
-              <button className="btn" onClick={() => onMedia(null)}>
+              <button className="eg-btn eg-btn--ghost" onClick={() => onMedia(null)}>
                 Quitar
               </button>
             )}
@@ -389,41 +409,50 @@ function MomentEffect({
   );
 }
 
-/** Campo que graba una combinación de teclas al pulsarla. */
-function ShortcutInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+/** Fila de la tabla de atajos: pulsa el atajo (o «Cambiar») y teclea la combinación nueva. */
+function ShortcutRow({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   const [rec, setRec] = useState(false);
+  const btn = useRef<HTMLButtonElement>(null);
   return (
-    <Field label={label}>
-      <div className="s-inline">
-        <input
-          type="text"
-          readOnly
-          className="s-kbd"
+    <tr>
+      <th scope="row">{label}</th>
+      <td>
+        <button
+          ref={btn}
+          type="button"
+          className="q-kbd-btn"
           data-recording={rec || undefined}
-          value={rec ? 'Pulsa la combinación… (Esc cancela)' : value ? prettyCombo(value) : 'Sin atajo'}
-          onFocus={() => setRec(true)}
+          aria-label={`${label}: ${value ? prettyCombo(value) : 'sin atajo'}. Pulsa para cambiarlo`}
+          onClick={() => setRec(true)}
           onBlur={() => setRec(false)}
           onKeyDown={(e) => {
             if (!rec) return;
             e.preventDefault();
             if (e.key === 'Escape') {
-              e.currentTarget.blur();
+              setRec(false);
               return;
             }
             const combo = comboFromEvent(e);
             if (combo) {
               onChange(combo);
-              e.currentTarget.blur();
+              setRec(false);
             }
           }}
-        />
+        >
+          {rec ? 'Pulsa la combinación… (Esc cancela)' : value ? prettyCombo(value).split(' + ').map((k) => <kbd key={k} className="eg-kbd">{k}</kbd>) : 'Sin atajo'}
+        </button>
+      </td>
+      <td className="eg-table__acts">
+        <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={() => { setRec(true); btn.current?.focus(); }}>
+          Cambiar
+        </button>
         {value && (
-          <button className="btn" onClick={() => onChange('')}>
+          <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={() => onChange('')}>
             Quitar
           </button>
         )}
-      </div>
-    </Field>
+      </td>
+    </tr>
   );
 }
 
@@ -434,24 +463,52 @@ const numOrNull = (s: string) => {
 const strOrNull = (s: string) => (s.trim() === '' ? null : s);
 
 const PROVIDER_TABS = [
-  { id: 'claude', name: 'Claude' },
-  { id: 'codex', name: 'ChatGPT' },
-  { id: 'gemini', name: 'Gemini' },
-  { id: 'cursor', name: 'Cursor' },
-  { id: 'copilot', name: 'Copilot' },
-  { id: 'nan', name: 'NaN' },
-  { id: 'openrouter', name: 'OpenRouter' },
-  { id: 'anthropic_api', name: 'Anthropic API' },
-  { id: 'openai_api', name: 'OpenAI API' },
+  { id: 'claude', name: 'Claude', group: 'sub', desc: 'Pro / Max · sesión de 5 h, semanal y por modelo' },
+  { id: 'codex', name: 'ChatGPT y Codex', group: 'sub', desc: 'Plus / Pro · sesión y semanal de Codex' },
+  { id: 'gemini', name: 'Gemini', group: 'sub', desc: 'Cuota diaria por modelo' },
+  { id: 'cursor', name: 'Cursor', group: 'sub', desc: 'Uso del plan en el ciclo y on-demand' },
+  { id: 'copilot', name: 'GitHub Copilot', group: 'sub', desc: 'Peticiones premium del mes' },
+  { id: 'nan', name: 'NaN Builders', group: 'api', desc: 'Cuota del plan y tokens por día' },
+  { id: 'openrouter', name: 'OpenRouter', group: 'api', desc: 'Saldo y gasto por clave' },
+  { id: 'anthropic_api', name: 'Anthropic API', group: 'api', desc: 'Gasto del mes con clave de admin' },
+  { id: 'openai_api', name: 'OpenAI API', group: 'api', desc: 'Gasto del mes con clave de admin' },
 ] as const;
+
+/** Secciones de Ajustes, una por responsabilidad (rediseño de Quorb en Claude Design). */
+const PAGES = [
+  { id: 'providers', label: 'Proveedores', title: 'Suscripciones y APIs', desc: 'Qué se consulta y cómo se conecta cada proveedor.', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z' },
+  { id: 'look', label: 'Apariencia', title: 'Apariencia', desc: 'Tamaño y color de los anillos, y dónde vive la tira.', icon: 'M12 2a10 10 0 1 0 0 20c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.55-2.5 5.55-5.55C21.97 6.01 17.46 2 12 2zM13.5 6.5h0M17.5 10.5h0M8.5 7.5h0M6.5 12.5h0' },
+  { id: 'alerts', label: 'Alertas', title: 'Alertas', desc: 'Qué pasa al superar un límite y cuando se reinicia.', icon: 'M10.27 21a2 2 0 0 0 3.46 0M3.26 15.33A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.67C19.41 13.96 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.41 5.96-2.74 7.33' },
+  { id: 'shortcuts', label: 'Atajos', title: 'Atajos', desc: 'Combinaciones de teclado que funcionan desde cualquier app.', icon: 'M2 4h20v16H2zM6 8h0M10 8h0M14 8h0M18 8h0M8 12h0M12 12h0M16 12h0M7 16h10' },
+  { id: 'updates', label: 'Actualizaciones', title: 'Actualizaciones', desc: 'Versión instalada, actualizaciones automáticas y el proyecto.', icon: 'M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5' },
+] as const;
+
+type PageId = (typeof PAGES)[number]['id'];
+const isPage = (v: unknown): v is PageId => PAGES.some((p) => p.id === v);
+
+function loadSection(): PageId {
+  try {
+    const v = localStorage.getItem('settingsSection');
+    return isPage(v) ? v : 'providers';
+  } catch {
+    return 'providers';
+  }
+}
+
+const EDGES: { id: AppConfig['dockEdge']; label: string }[] = [
+  { id: 'left', label: 'Izquierda' },
+  { id: 'right', label: 'Derecha' },
+  { id: 'top', label: 'Arriba' },
+  { id: 'bottom', label: 'Abajo' },
+];
 
 type ProviderTab = (typeof PROVIDER_TABS)[number]['id'];
 type ProviderState = 'on' | 'warn' | 'off';
 
-const STATE_LABEL: Record<ProviderState, string> = {
-  on: 'Activo',
-  warn: 'Activo, falta configurar',
-  off: 'Desactivado',
+const PROVIDER_BADGE: Record<ProviderState, { label: string; tone: 'success' | 'warning' | 'neutral' }> = {
+  on: { label: 'Activo', tone: 'success' },
+  warn: { label: 'Falta conectar', tone: 'warning' },
+  off: { label: 'Desactivado', tone: 'neutral' },
 };
 
 /** Estado de cada pestaña: activo, activo pero sin configurar, o desactivado. */
@@ -498,11 +555,22 @@ export function Settings() {
   const [tab, setTab] = useState<ProviderTab>(loadTab);
   const selectTab = (t: ProviderTab) => {
     setTab(t);
+    window.setTimeout(() => document.getElementById('provider-config')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
     try {
       localStorage.setItem('settingsTab', t);
     } catch {
       /* sin almacenamiento */
     }
+  };
+  const [section, setSection] = useState<PageId>(loadSection);
+  const selectSection = (p: PageId) => {
+    setSection(p);
+    try {
+      localStorage.setItem('settingsSection', p);
+    } catch {
+      /* sin almacenamiento */
+    }
+    document.querySelector('.q-settings__main')?.scrollTo({ top: 0 });
   };
   const [shortcutErrors, setShortcutErrors] = useState<string[]>([]);
   const sizeTimer = useRef<number | undefined>(undefined);
@@ -517,7 +585,7 @@ export function Settings() {
     isEnabled().then(setAutostart).catch(() => setAutostart(false));
   }, []);
 
-  if (!cfg) return <div className="settings">Cargando…</div>;
+  if (!cfg) return <div className="q-settings" />;
 
   const set = <K extends keyof AppConfig>(key: K, patch: Partial<AppConfig[K]> | AppConfig[K]) =>
     setCfg((c) =>
@@ -570,241 +638,95 @@ export function Settings() {
     }
   };
 
+  const page = PAGES.find((p) => p.id === section) ?? PAGES[0];
+  const pendingProviders = PROVIDER_TABS.filter((t) => providerState(t.id, cfg, secrets) === 'warn').length;
+  const palette = derivePalette(cfg.accentColor);
+
+  const providerCard = (t: (typeof PROVIDER_TABS)[number]) => {
+    const st = providerState(t.id, cfg, secrets);
+    const badge = PROVIDER_BADGE[st];
+    return (
+      <article key={t.id} className="eg-module-card q-provider" aria-current={tab === t.id}>
+        <div className="eg-module-card__head">
+          <span className="q-provider__logo logo">
+            <ProviderLogo id={t.id} name={t.name} />
+          </span>
+          <h3 className="eg-module-card__name">{t.name}</h3>
+          <span className={`eg-status eg-status--${badge.tone}`}>{badge.label}</span>
+        </div>
+        <span className="q-provider__desc">{t.desc}</span>
+        <div className="eg-module-card__actions">
+          <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" aria-expanded={tab === t.id} onClick={() => selectTab(t.id)}>
+            {st === 'warn' ? 'Conectar' : 'Configurar'}
+          </button>
+        </div>
+      </article>
+    );
+  };
+
   return (
-    <div className="settings">
-      <header className="settings__head">
-        <span className="brand">
-          <span className="brand__mark" aria-hidden="true" />
-          QUORB
-        </span>
-        <h1>Ajustes</h1>
-      </header>
-
-      <Section title="General">
-        <div className="s-grid">
-          <Field label="Refrescar cada (min)">
-            <input
-              type="number"
-              min={1}
-              max={120}
-              value={cfg.refreshMinutes}
-              onChange={(e) => set('refreshMinutes', Number(e.target.value) || 1)}
-            />
-          </Field>
-          <Field label={`Opacidad · ${Math.round(cfg.opacity * 100)}%`}>
-            <input
-              type="range"
-              min={0.3}
-              max={1}
-              step={0.02}
-              value={cfg.opacity}
-              onChange={(e) => set('opacity', Number(e.target.value))}
-            />
-          </Field>
+    <div className="q-settings">
+      <aside className="q-settings__nav" aria-label="Quorb">
+        <div className="q-brand">
+          <span className="q-brand__mark" aria-hidden="true">Q</span>
+          <span>
+            <span className="q-brand__name">Quorb</span>
+            <span className="q-brand__ver">Ajustes</span>
+          </span>
         </div>
-        <Field label="Borde de la pantalla" hint="También puedes arrastrar la tira desde su asa: se pega al borde más cercano.">
-          <select value={cfg.dockEdge} onChange={(e) => set('dockEdge', e.target.value as AppConfig['dockEdge'])}>
-            <option value="top">Arriba</option>
-            <option value="bottom">Abajo</option>
-            <option value="left">Izquierda</option>
-            <option value="right">Derecha</option>
-          </select>
-        </Field>
-        <Field label={`Posición en el borde · ${Math.round(cfg.dockOffset * 100)}%`}>
-          <input type="range" min={0} max={1} step={0.01} value={cfg.dockOffset} onChange={(e) => set('dockOffset', Number(e.target.value))} />
-        </Field>
-        <Field
-          label={`Tamaño de los círculos · ${cfg.orbSize} px`}
-          hint={
-            <span className="s-range-hint">
-              <span>{ORB_SIZE.min} px</span>
-              <button type="button" className="s-link" onClick={() => changeOrbSize(ORB_SIZE.default)}>
-                Restablecer ({ORB_SIZE.default} px)
-              </button>
-              <span>{ORB_SIZE.max} px</span>
-            </span>
-          }
-        >
-          <input
-            type="range"
-            min={ORB_SIZE.min}
-            max={ORB_SIZE.max}
-            step={2}
-            value={cfg.orbSize}
-            onChange={(e) => changeOrbSize(Number(e.target.value))}
-          />
-        </Field>
-        <div className="s-field">
-          <span className="s-field__label">Color de anillos y barras</span>
-          <div className="s-colors">
-            {ACCENT_PRESETS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                className="s-swatch"
-                style={{ background: c }}
-                aria-label={`Usar ${c}`}
-                aria-pressed={normalizeHex(cfg.accentColor) === c}
-                onClick={() => changeAccent(c)}
-              />
-            ))}
-            <label className="s-swatch s-swatch--picker" title="Elegir cualquier color (RGB)">
-              <input type="color" value={normalizeHex(cfg.accentColor)} onChange={(e) => changeAccent(e.target.value)} />
-              <span aria-hidden="true">+</span>
-            </label>
-          </div>
-          <div className="s-palette" aria-label="Colores resultantes">
-            {derivePalette(cfg.accentColor).map((c, i) => (
-              <span key={i} className="s-palette__chip">
-                <span className="s-palette__ring" style={{ borderColor: c }} />
-                <span className="s-palette__bar" style={{ background: c }} />
-                <code>{c}</code>
-              </span>
-            ))}
-          </div>
-          <small className="s-field__hint">
-            El color elegido es el del anillo exterior y la primera barra; los otros dos tonos salen automáticos.{' '}
-            <button type="button" className="s-link" onClick={() => changeAccent(DEFAULT_ACCENT)}>
-              Restablecer rojo egdev
-            </button>
-          </small>
-        </div>
-        <Toggle label="Siempre encima" checked={cfg.alwaysOnTop} onChange={(v) => set('alwaysOnTop', v)} />
-        <Toggle label="Círculos pequeños" hint="Un solo anillo por suscripción (el límite más cercano)" checked={cfg.compact} onChange={(v) => set('compact', v)} />
-        <Toggle label="Arrancar con Windows" checked={autostart} onChange={toggleAutostart} />
-        <Toggle
-          label="Ocultar automáticamente"
-          hint="Deja solo una franja en el borde; aparece al acercar el ratón o cuando hay un aviso"
-          checked={cfg.autoHide}
-          onChange={(v) => set('autoHide', v)}
-        />
-        {cfg.hiddenProviders.length > 0 && (
-          <div className="s-field">
-            <span className="s-field__label">Círculos ocultos</span>
-            <div className="s-colors">
-              {cfg.hiddenProviders.map((id) => (
-                <button key={id} className="chip" onClick={() => set('hiddenProviders', cfg.hiddenProviders.filter((x) => x !== id))}>
-                  {id} · mostrar
+        <nav aria-label="Secciones de ajustes">
+          <ul className="eg-menu eg-menu--nav">
+            {PAGES.map((p) => (
+              <li key={p.id}>
+                <button type="button" className="eg-menu__item" aria-current={section === p.id ? 'page' : undefined} onClick={() => selectSection(p.id)}>
+                  <svg className="eg-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d={p.icon} />
+                  </svg>
+                  <span className="eg-menu__label">{p.label}</span>
+                  {p.id === 'providers' && pendingProviders > 0 && (
+                    <span className="eg-menu__count" title="Activos pero sin configurar">{pendingProviders}</span>
+                  )}
+                  {p.id === 'shortcuts' && shortcutErrors.length > 0 && <span className="eg-menu__count">{shortcutErrors.length}</span>}
                 </button>
-              ))}
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </aside>
+
+      <main className="q-settings__main">
+        <div className="q-settings__content">
+          <header className="q-head">
+            <div className="q-head__titles">
+              <p className="eg-eyebrow">Ajustes</p>
+              <h1>{page.title}</h1>
+              <p className="q-head__desc">{page.desc}</p>
             </div>
-            <small className="s-field__hint">Se siguen consultando y avisando aunque no se vean. Para reordenar, arrastra los círculos en la tira.</small>
-          </div>
-        )}
-      </Section>
+            <label className="eg-check eg-check--switch">
+              <input type="checkbox" checked={autostart} onChange={(e) => toggleAutostart(e.target.checked)} /> Arrancar con Windows
+            </label>
+          </header>
 
-      <UpdatesSection auto={cfg.autoUpdate} onAuto={(v) => set('autoUpdate', v)} />
-
-      <Section kicker="Teclado" title="Atajos globales">
-        <Toggle label="Activar atajos" hint="Funcionan aunque la app no tenga el foco" checked={cfg.shortcuts.enabled} onChange={(v) => set('shortcuts', { enabled: v })} />
-        {cfg.shortcuts.enabled && (
-          <>
-            <ShortcutInput label="Mostrar / ocultar la tira" value={cfg.shortcuts.toggle} onChange={(v) => set('shortcuts', { toggle: v })} />
-            <ShortcutInput label="Abrir el detalle del más cargado" value={cfg.shortcuts.openPeak} onChange={(v) => set('shortcuts', { openPeak: v })} />
-            <ShortcutInput label="Actualizar ahora" value={cfg.shortcuts.refresh} onChange={(v) => set('shortcuts', { refresh: v })} />
-            {shortcutErrors.length > 0 && (
-              <ul className="s-errors">
-                {shortcutErrors.map((e) => (
-                  <li key={e}>{e}</li>
-                ))}
-              </ul>
-            )}
-            <small className="s-field__hint">Haz clic en un campo y pulsa la combinación. Se aplican al guardar.</small>
-          </>
-        )}
-      </Section>
-
-      <Section kicker="Avisos" title="Avisos y efectos">
-        <Toggle label="Activar avisos" checked={cfg.alerts.enabled} onChange={(v) => set('alerts', { enabled: v })} />
-        <Toggle label="Notificación de Windows" hint="Además del efecto en pantalla" checked={cfg.alerts.native} onChange={(v) => set('alerts', { native: v })} />
-
-        <div className="s-moment">
-          <h3 className="s-moment__title">1 · Al superar el límite</h3>
-          <Field label={`Se considera superado a partir de · ${Math.round(cfg.alerts.threshold)} %`} hint="Se avisa una vez por ventana (sesión de 5 h, semana, mes…).">
-            <input type="range" min={50} max={100} step={1} value={cfg.alerts.threshold} onChange={(e) => set('alerts', { threshold: Number(e.target.value) })} />
-          </Field>
-          <MomentEffect
-            moment="exceeded"
-            effect={cfg.alerts.exceededEffect}
-            media={cfg.alerts.exceededMedia}
-            alerts={cfg.alerts}
-            onEffect={(v) => set('alerts', { exceededEffect: v })}
-            onMedia={(v) => set('alerts', { exceededMedia: v })}
-            onError={setSaved}
-          />
-        </div>
-
-        <div className="s-moment">
-          <h3 className="s-moment__title">2 · Al reiniciarse</h3>
-          <Toggle
-            label="Avisar cuando el límite superado se reinicia"
-            hint="«Claude · Sesión 5 h: disponible de nuevo»"
-            checked={cfg.alerts.onReset}
-            onChange={(v) => set('alerts', { onReset: v })}
-          />
-          {cfg.alerts.onReset && (
-            <MomentEffect
-              moment="reset"
-              effect={cfg.alerts.resetEffect}
-              media={cfg.alerts.resetMedia}
-              alerts={cfg.alerts}
-              onEffect={(v) => set('alerts', { resetEffect: v })}
-              onMedia={(v) => set('alerts', { resetMedia: v })}
-              onError={setSaved}
-            />
-          )}
-        </div>
-
-        {(cfg.alerts.exceededEffect === 'custom' || cfg.alerts.resetEffect === 'custom') && (
-          <div className="s-grid">
-            <Field label="Tamaño del efecto propio">
-              <select value={cfg.alerts.mediaSize} onChange={(e) => set('alerts', { mediaSize: e.target.value as MediaSize })}>
-                <option value="small">Pequeño</option>
-                <option value="medium">Mediano</option>
-                <option value="full">Pantalla completa</option>
-              </select>
-            </Field>
-            <Toggle label="Con sonido (vídeo)" checked={cfg.alerts.mediaSound} onChange={(v) => set('alerts', { mediaSound: v })} />
-          </div>
-        )}
-        <p className="s-note">
-          <strong>Efecto propio:</strong> un vídeo WebM (VP9) con canal alfa o una imagen animada GIF, WebP o APNG con transparencia. Se
-          muestra centrado encima de todo, sin bloquear el ratón; el vídeo dura lo que dure (máx. 20 s) y las imágenes 4,5 s.
-        </p>
-      </Section>
-
-      <section className="s-section s-providers">
-        <p className="kicker">Proveedores</p>
-        <h2>Suscripciones y APIs</h2>
-        <div className="ptabs" role="tablist" aria-label="Proveedores">
-          {PROVIDER_TABS.map((t) => {
-            const st = providerState(t.id, cfg, secrets);
-            return (
-              <button
-                key={t.id}
-                role="tab"
-                className="ptab"
-                aria-selected={tab === t.id}
-                data-state={st}
-                onClick={() => selectTab(t.id)}
-                title={STATE_LABEL[st]}
-              >
-                <span className="ptab__logo logo">
-                  <ProviderLogo id={t.id} name={t.name} />
-                </span>
-                <span className="ptab__name">{t.name}</span>
-                <span className="ptab__dot" aria-label={STATE_LABEL[st]} />
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <div className="s-provider" role="tabpanel">
+          {section === 'providers' && (
+            <>
+              <section className="q-section" aria-label="Proveedores">
+                <div className="q-inline">
+                  <h2 style={{ margin: 0, font: '800 22px/1.1 var(--font-display)', textTransform: 'uppercase' }}>Proveedores</h2>
+                  <Field label="Consultar cada (min)">
+                    <input type="number" min={1} max={120} style={{ width: 110 }} value={cfg.refreshMinutes} onChange={(e) => set('refreshMinutes', Number(e.target.value) || 1)} />
+                  </Field>
+                </div>
+                <p className="eg-eyebrow">Suscripciones</p>
+                <div className="q-providers">{PROVIDER_TABS.filter((t) => t.group === 'sub').map(providerCard)}</div>
+                <p className="eg-eyebrow">APIs y créditos</p>
+                <div className="q-providers">{PROVIDER_TABS.filter((t) => t.group === 'api').map(providerCard)}</div>
+                <small className="eg-field__hint">Para cambiar el orden de los anillos, arrástralos en la tira.</small>
+              </section>
+              <div id="provider-config" role="region" aria-label="Configuración del proveedor">
       {tab === 'claude' && (
         <Section kicker="Suscripción · OAuth" title="Claude (Pro / Max)">
           <Toggle label="Mostrar en el widget" checked={cfg.claude.enabled} onChange={(v) => set('claude', { enabled: v })} />
-          <p className="s-note">
+          <p className="q-note">
             El login es el OAuth oficial de Claude Code: «Iniciar sesión» abre <code>claude</code> en una terminal y, si no hay sesión,
             escribe <code>/login</code>. La app solo lee la sesión que guarda el CLI; no ve tu contraseña ni refresca tokens.
           </p>
@@ -816,11 +738,11 @@ export function Settings() {
               onChange={(e) => set('claude', { credentialsPath: strOrNull(e.target.value) })}
             />
           </Field>
-          <div className="s-inline">
+          <div className="q-inline">
             <Field label="Comando de login">
               <input type="text" spellCheck={false} value={cfg.claude.loginCommand} onChange={(e) => set('claude', { loginCommand: e.target.value })} />
             </Field>
-            <button className="btn btn--accent s-inline__btn" onClick={() => api.openLogin('claude').catch((e) => setSaved(String(e)))}>
+            <button className="eg-btn eg-btn--primary" onClick={() => api.openLogin('claude').catch((e) => setSaved(String(e)))}>
               Iniciar sesión
             </button>
           </div>
@@ -830,7 +752,7 @@ export function Settings() {
       {tab === 'codex' && (
         <Section kicker="Suscripción · OAuth" title="ChatGPT (Plus / Pro · Codex)">
           <Toggle label="Mostrar en el widget" checked={cfg.codex.enabled} onChange={(v) => set('codex', { enabled: v })} />
-          <p className="s-note">
+          <p className="q-note">
             «Iniciar sesión» ejecuta <code>codex login</code>, que abre el OAuth de OpenAI en el navegador. Los límites de 5 h y semanales
             son los de tu plan de ChatGPT en Codex.
           </p>
@@ -842,11 +764,11 @@ export function Settings() {
               onChange={(e) => set('codex', { credentialsPath: strOrNull(e.target.value) })}
             />
           </Field>
-          <div className="s-inline">
+          <div className="q-inline">
             <Field label="Comando de login">
               <input type="text" spellCheck={false} value={cfg.codex.loginCommand} onChange={(e) => set('codex', { loginCommand: e.target.value })} />
             </Field>
-            <button className="btn btn--accent s-inline__btn" onClick={() => api.openLogin('codex').catch((e) => setSaved(String(e)))}>
+            <button className="eg-btn eg-btn--primary" onClick={() => api.openLogin('codex').catch((e) => setSaved(String(e)))}>
               Iniciar sesión
             </button>
           </div>
@@ -856,18 +778,18 @@ export function Settings() {
       {tab === 'gemini' && (
         <Section kicker="Suscripción · sesión de Gemini CLI" title="Gemini (Google AI Pro / Code Assist)">
           <Toggle label="Mostrar en el widget" checked={cfg.gemini.enabled} onChange={(v) => set('gemini', { enabled: v })} />
-          <p className="s-note">
+          <p className="q-note">
             Cuotas diarias por modelo. Igual que con Claude y Codex, el login es el oficial de <Link href={LINKS.geminiCli}>Gemini CLI</Link>{' '}
             (<code>gemini</code> → «Login with Google») y la app lee la sesión que guarda. Endpoints no oficiales.
           </p>
           <Field label="Fichero de credenciales" hint={<>Vacío = <code>%USERPROFILE%\.gemini\oauth_creds.json</code></>}>
             <input type="text" spellCheck={false} value={cfg.gemini.credentialsPath ?? ''} onChange={(e) => set('gemini', { credentialsPath: strOrNull(e.target.value) })} />
           </Field>
-          <div className="s-inline">
+          <div className="q-inline">
             <Field label="Comando de login">
               <input type="text" spellCheck={false} value={cfg.gemini.loginCommand} onChange={(e) => set('gemini', { loginCommand: e.target.value })} />
             </Field>
-            <button className="btn btn--accent s-inline__btn" onClick={() => api.openLogin('gemini').catch((e) => setSaved(String(e)))}>
+            <button className="eg-btn eg-btn--primary" onClick={() => api.openLogin('gemini').catch((e) => setSaved(String(e)))}>
               Iniciar sesión
             </button>
           </div>
@@ -877,7 +799,7 @@ export function Settings() {
       {tab === 'cursor' && (
         <Section kicker="Suscripción · sesión de la app" title="Cursor">
           <Toggle label="Mostrar en el widget" checked={cfg.cursor.enabled} onChange={(v) => set('cursor', { enabled: v })} />
-          <p className="s-note">
+          <p className="q-note">
             Uso del plan en el ciclo actual (total, Auto y modelos API) y gasto on-demand. Se lee la sesión de la app de Cursor (solo lectura);
             endpoint no oficial.
           </p>
@@ -897,10 +819,10 @@ export function Settings() {
       {tab === 'copilot' && (
         <Section kicker="Suscripción · API oficial" title="GitHub Copilot">
           <Toggle label="Mostrar en el widget" checked={cfg.copilot.enabled} onChange={(v) => set('copilot', { enabled: v })} />
-          <p className="s-note">
+          <p className="q-note">
             Peticiones premium del mes con la API de facturación de GitHub. Se reinician el día 1 (UTC).
           </p>
-          <div className="s-grid">
+          <div className="q-cols">
             <Field label="Usuario de GitHub">
               <input type="text" spellCheck={false} placeholder="egdev6" value={cfg.copilot.username} onChange={(e) => set('copilot', { username: e.target.value })} />
             </Field>
@@ -938,7 +860,7 @@ export function Settings() {
       {tab === 'openrouter' && (
         <Section kicker="Pago por uso · API oficial" title="OpenRouter">
           <Toggle label="Mostrar en el widget" checked={cfg.openrouter.enabled} onChange={(v) => set('openrouter', { enabled: v })} />
-          <p className="s-note">Gasto del mes y de hoy, límite de la key (si tiene) y saldo de la cuenta.</p>
+          <p className="q-note">Gasto del mes y de hoy, límite de la key (si tiene) y saldo de la cuenta.</p>
           <SecretInput
             id="openrouter_api_key"
             label="API key"
@@ -953,7 +875,7 @@ export function Settings() {
         <Section kicker="Suscripción · cuenta o API key" title="NaN Builders">
           <Toggle label="Mostrar en el widget" checked={cfg.nan.enabled} onChange={(v) => set('nan', { enabled: v })} />
           <NanConnect connected={!!secrets.nan_session} onChange={loadSecrets} />
-          <p className="s-note">
+          <p className="q-note">
             Con la cuenta conectada ves lo mismo que en tu dashboard: tokens usados frente a la cuota de cada modelo, cuándo se reinicia y la
             serie diaria. Sin cuenta, la API key usa <code>/v1/usage</code> y las cuotas publicadas. <Link href={LINKS.nanDocs}>Docs</Link>
           </p>
@@ -964,7 +886,7 @@ export function Settings() {
             onSaved={loadSecrets}
             hint={<>Créala en <Link href={LINKS.nanKeys}>cloud.nan.builders</Link> › API Keys</>}
           />
-          <div className="s-grid">
+          <div className="q-cols">
             <Field label="Plan">
               <select value={cfg.nan.plan} onChange={(e) => set('nan', { plan: e.target.value })}>
                 <option value="community">nan_community</option>
@@ -986,12 +908,12 @@ export function Settings() {
             />
           </Field>
           <NanProbe />
-          <details className="s-details">
+          <details className="q-details">
             <summary>Endpoint de consumo (avanzado)</summary>
             <Field label="URL" hint="Se llama con tu key como Bearer y debe devolver JSON.">
               <input type="text" spellCheck={false} value={cfg.nan.usageUrl ?? ''} onChange={(e) => set('nan', { usageUrl: strOrNull(e.target.value) })} />
             </Field>
-            <div className="s-grid">
+            <div className="q-cols">
               <Field label="JSON Pointer · usado" hint="p. ej. /usage/used_tokens">
                 <input type="text" spellCheck={false} value={cfg.nan.usedPointer ?? ''} onChange={(e) => set('nan', { usedPointer: strOrNull(e.target.value) })} />
               </Field>
@@ -1049,17 +971,199 @@ export function Settings() {
           </Field>
         </Section>
       )}
-      </div>
+              </div>
+            </>
+          )}
 
-      <footer className="settings__foot">
-        <span className="settings__saved" role="status">{saved}</span>
-        <button className="btn" onClick={() => getCurrentWindow().close()}>
-          Cerrar
-        </button>
-        <button className="btn btn--accent" onClick={save}>
-          Guardar cambios
-        </button>
-      </footer>
+          {section === 'look' && (
+            <div className="q-grid-2">
+              <Section title="Anillos">
+                <div className="q-preview">
+                  <span className="eg-gauge" role="img" aria-label={`Vista previa a ${cfg.orbSize} px`} style={{ '--size': `${cfg.orbSize}px` } as CSSProperties}>
+                    <span className="eg-gauge__ring" style={{ '--p': 0.82 } as CSSProperties} />
+                    {!cfg.compact && <span className="eg-gauge__ring" style={{ '--p': 0.46 } as CSSProperties} />}
+                    {!cfg.compact && cfg.orbSize >= 40 && <span className="eg-gauge__ring" style={{ '--p': 0.31 } as CSSProperties} />}
+                    <span className="eg-gauge__logo logo">
+                      <ProviderLogo id="claude" name="Claude" />
+                    </span>
+                  </span>
+                  <Field label="Tamaño del anillo" value={`${cfg.orbSize} px`} hint={<button type="button" className="q-link" onClick={() => changeOrbSize(ORB_SIZE.default)}>Restablecer ({ORB_SIZE.default} px)</button>}>
+                    <input type="range" min={ORB_SIZE.min} max={ORB_SIZE.max} step={2} value={cfg.orbSize} style={rangeFill(cfg.orbSize, ORB_SIZE.min, ORB_SIZE.max)} onChange={(e) => changeOrbSize(Number(e.target.value))} />
+                  </Field>
+                </div>
+                <div className="eg-field">
+                  <span className="eg-field__label">Color de acento</span>
+                  <div className="q-swatches">
+                    {ACCENT_PRESETS.map((c) => (
+                      <button key={c} type="button" className="q-swatch" style={{ background: c }} aria-label={`Usar ${c}`} aria-pressed={normalizeHex(cfg.accentColor) === c} onClick={() => changeAccent(c)} />
+                    ))}
+                    <label className="q-swatch q-swatch--picker" title="Elegir cualquier color (RGB)">
+                      <input type="color" value={normalizeHex(cfg.accentColor)} onChange={(e) => changeAccent(e.target.value)} />
+                      <span aria-hidden="true">+</span>
+                    </label>
+                  </div>
+                  <span className="q-palette" aria-label="Colores resultantes">
+                    {palette.map((c, i) => (
+                      <span key={i}>
+                        <i style={{ background: c }} />
+                        {c}
+                      </span>
+                    ))}
+                  </span>
+                  <small className="eg-field__hint">
+                    Es el del anillo exterior y la primera barra; los otros dos tonos y los brillos salen solos.{' '}
+                    <button type="button" className="q-link" onClick={() => changeAccent(DEFAULT_ACCENT)}>Restablecer rojo egdev</button>
+                  </small>
+                </div>
+                <Field label="Opacidad de la tira y el panel" value={`${Math.round(cfg.opacity * 100)} %`}>
+                  <input type="range" min={0.3} max={1} step={0.02} value={cfg.opacity} style={rangeFill(cfg.opacity, 0.3, 1)} onChange={(e) => set('opacity', Number(e.target.value))} />
+                </Field>
+                <Rows>
+                  <Toggle label="Círculos pequeños" hint="Un solo anillo por suscripción: el límite más cercano." checked={cfg.compact} onChange={(v) => set('compact', v)} />
+                </Rows>
+              </Section>
+
+              <Section title="Tira">
+                <div className="eg-field">
+                  <span className="eg-field__label" id="lb-edge">Borde</span>
+                  <div className="q-chips" role="radiogroup" aria-labelledby="lb-edge">
+                    {EDGES.map((e) => (
+                      <button key={e.id} type="button" role="radio" aria-checked={cfg.dockEdge === e.id} className={`eg-chip${cfg.dockEdge === e.id ? ' is-active' : ''}`} onClick={() => set('dockEdge', e.id)}>
+                        {e.label}
+                      </button>
+                    ))}
+                  </div>
+                  <small className="eg-field__hint">También puedes arrastrarla desde su asa: se pega al borde más cercano.</small>
+                </div>
+                <Field label="Posición en el borde" value={`${Math.round(cfg.dockOffset * 100)} %`}>
+                  <input type="range" min={0} max={1} step={0.01} value={cfg.dockOffset} style={rangeFill(cfg.dockOffset, 0, 1)} onChange={(e) => set('dockOffset', Number(e.target.value))} />
+                </Field>
+                <Rows>
+                  <Toggle label="Ocultar sola" hint="Deja una franja en el borde y vuelve al acercar el ratón o cuando hay un aviso." checked={cfg.autoHide} onChange={(v) => set('autoHide', v)} />
+                  <Toggle label="Siempre encima" hint="Por encima del resto de ventanas." checked={cfg.alwaysOnTop} onChange={(v) => set('alwaysOnTop', v)} />
+                </Rows>
+                <div className="eg-field">
+                  <span className="eg-field__label">Círculos ocultos</span>
+                  {cfg.hiddenProviders.length > 0 ? (
+                    <div className="q-chips">
+                      {cfg.hiddenProviders.map((id) => (
+                        <button key={id} type="button" className="eg-chip" onClick={() => set('hiddenProviders', cfg.hiddenProviders.filter((x) => x !== id))}>
+                          {PROVIDER_TABS.find((t) => t.id === id)?.name ?? id} · mostrar
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <small className="eg-field__hint">Ninguno. Para ocultar uno, pulsa «Ocultar» en su panel; se sigue consultando y avisando.</small>
+                  )}
+                </div>
+              </Section>
+            </div>
+          )}
+
+          {section === 'alerts' && (
+            <div className="q-grid-2">
+              <Section title="Cuándo avisar">
+                <Rows>
+                  <Toggle label="Activar avisos" checked={cfg.alerts.enabled} onChange={(v) => set('alerts', { enabled: v })} />
+                  <Toggle label="Notificación de Windows" hint="Además del efecto en pantalla." checked={cfg.alerts.native} onChange={(v) => set('alerts', { native: v })} />
+                </Rows>
+                <div className="q-moment">
+                  <h3>1 · Al superar el límite</h3>
+                  <Field label="Avisar al llegar a" value={`${Math.round(cfg.alerts.threshold)} %`} hint="Una vez por ventana (sesión de 5 h, semana, mes…).">
+                    <input type="range" min={50} max={100} step={1} value={cfg.alerts.threshold} style={rangeFill(cfg.alerts.threshold, 50, 100)} onChange={(e) => set('alerts', { threshold: Number(e.target.value) })} />
+                  </Field>
+                  <MomentEffect moment="exceeded" effect={cfg.alerts.exceededEffect} media={cfg.alerts.exceededMedia} alerts={cfg.alerts} onEffect={(v) => set('alerts', { exceededEffect: v })} onMedia={(v) => set('alerts', { exceededMedia: v })} onError={setSaved} />
+                </div>
+                <div className="q-moment">
+                  <h3>2 · Al reiniciarse</h3>
+                  <Rows>
+                    <Toggle label="Avisar cuando el límite superado se reinicia" hint="«Claude · Sesión 5 h: disponible de nuevo»" checked={cfg.alerts.onReset} onChange={(v) => set('alerts', { onReset: v })} />
+                  </Rows>
+                  {cfg.alerts.onReset && (
+                    <MomentEffect moment="reset" effect={cfg.alerts.resetEffect} media={cfg.alerts.resetMedia} alerts={cfg.alerts} onEffect={(v) => set('alerts', { resetEffect: v })} onMedia={(v) => set('alerts', { resetMedia: v })} onError={setSaved} />
+                  )}
+                </div>
+              </Section>
+
+              <Section title="Efecto propio">
+                <p className="q-note">
+                  Un vídeo WebM (VP9) con canal alfa o una imagen animada GIF, WebP o APNG con transparencia. Se muestra centrado encima de todo,
+                  sin bloquear el ratón; el vídeo dura lo que dure (máx. 20 s) y las imágenes 4,5 s.
+                </p>
+                <Field label="Tamaño">
+                  <select value={cfg.alerts.mediaSize} onChange={(e) => set('alerts', { mediaSize: e.target.value as MediaSize })}>
+                    <option value="small">Pequeño</option>
+                    <option value="medium">Mediano</option>
+                    <option value="full">Pantalla completa</option>
+                  </select>
+                </Field>
+                <Rows>
+                  <Toggle label="Con sonido" hint="Solo para vídeos." checked={cfg.alerts.mediaSound} onChange={(v) => set('alerts', { mediaSound: v })} />
+                </Rows>
+              </Section>
+            </div>
+          )}
+
+          {section === 'shortcuts' && (
+            <Section title="Atajos globales">
+              <Rows>
+                <Toggle label="Activar atajos" hint="Funcionan aunque Quorb no tenga el foco." checked={cfg.shortcuts.enabled} onChange={(v) => set('shortcuts', { enabled: v })} />
+              </Rows>
+              {cfg.shortcuts.enabled && (
+                <>
+                  <div className="eg-table-wrap">
+                    <table className="eg-table eg-table--compact">
+                      <caption className="q-sr">Atajos de teclado</caption>
+                      <thead>
+                        <tr>
+                          <th scope="col">Acción</th>
+                          <th scope="col">Atajo</th>
+                          <th scope="col" className="eg-table__acts"><span className="q-sr">Acciones</span></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <ShortcutRow label="Mostrar u ocultar la tira" value={cfg.shortcuts.toggle} onChange={(v) => set('shortcuts', { toggle: v })} />
+                        <ShortcutRow label="Abrir el más cargado" value={cfg.shortcuts.openPeak} onChange={(v) => set('shortcuts', { openPeak: v })} />
+                        <ShortcutRow label="Actualizar ahora" value={cfg.shortcuts.refresh} onChange={(v) => set('shortcuts', { refresh: v })} />
+                      </tbody>
+                    </table>
+                  </div>
+                  {shortcutErrors.map((e) => (
+                    <div key={e} className="eg-notice eg-notice--danger eg-notice--sm" role="alert">
+                      <span className="eg-notice__text">{e}</span>
+                    </div>
+                  ))}
+                  <small className="eg-field__hint">Pulsa un atajo o «Cambiar» y teclea la combinación. Se aplican al guardar.</small>
+                </>
+              )}
+            </Section>
+          )}
+
+          {section === 'updates' && (
+            <div className="q-grid-2">
+              <UpdatesSection auto={cfg.autoUpdate} onAuto={(v) => set('autoUpdate', v)} />
+              <Section title="Proyecto">
+                <p className="q-note">Quorb es open source (MIT). Si te ahorra un susto con los límites, una estrella en GitHub ayuda a que lo encuentre más gente.</p>
+                <div className="q-chips">
+                  <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={() => openUrl(LINKS.repo)}>GitHub</button>
+                  <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={() => openUrl(LINKS.issues)}>Pedir un proveedor</button>
+                  <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={() => openUrl(LINKS.web)}>egdev.es</button>
+                </div>
+              </Section>
+            </div>
+          )}
+        </div>
+
+        <footer className="q-foot">
+          <span className="q-foot__msg" role="status">{saved}</span>
+          <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={() => getCurrentWindow().close()}>
+            Cerrar
+          </button>
+          <button type="button" className="eg-btn eg-btn--primary eg-btn--sm" onClick={save}>
+            Guardar cambios
+          </button>
+        </footer>
+      </main>
     </div>
   );
 }

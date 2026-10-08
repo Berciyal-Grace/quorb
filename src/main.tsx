@@ -5,7 +5,11 @@ import { Widget } from './Widget';
 import { Settings } from './Settings';
 import { Overlay } from './Overlay';
 import { DetailPanel } from './DetailPanel';
+// EGDEV Foundation (copia temporal del DS) → estilos propios → capa de tema de Quorb.
+import './ds/egdev/tokens.css';
+import './ds/egdev/components.css';
 import './styles.css';
+import './theme.css';
 
 // Una sola build de frontend; cada ventana pinta su vista según su label.
 const label = getCurrentWindow().label;

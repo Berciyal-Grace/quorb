@@ -2,7 +2,11 @@ import type { CSSProperties } from 'react';
 import type { Meter } from '../lib/types';
 import { formatCompact, formatPercent, formatResetIn, levelFor } from '../lib/format';
 
-export function MeterBar({ meter, color }: { meter: Meter; color?: string }) {
+/**
+ * Un límite del panel (EGDEV Foundation): marca del anillo + etiqueta + %,
+ * ProgressBar --lg y cuándo se reinicia. `ring` = anillo del círculo (1–3) o null.
+ */
+export function MeterBar({ meter, ring }: { meter: Meter; ring: number | null }) {
   const pct = meter.percent;
   const reset = formatResetIn(meter.resetsAt);
   const amount =
@@ -11,39 +15,29 @@ export function MeterBar({ meter, color }: { meter: Meter; color?: string }) {
         ? `${formatCompact(meter.used)} / ${formatCompact(meter.limit)}${meter.unit ? ` ${meter.unit}` : ''}`
         : `${formatCompact(meter.used)}${meter.unit ? ` ${meter.unit}` : ''}`
       : null;
+  const meta = [pct != null ? amount : null, reset ? `Se reinicia ${reset}` : null].filter(Boolean).join(' · ');
 
   return (
-    <div
-      className="meter"
-      data-level={levelFor(pct)}
-      data-colored={color ? true : undefined}
-      style={color ? ({ '--bar-color': color } as CSSProperties) : undefined}
-    >
-      <div className="meter__row">
-        <span className="meter__label">
-          {color && <span className="meter__swatch" aria-hidden="true" />}
-          {meter.label}
-        </span>
-        <span className="meter__value">{pct != null ? formatPercent(pct) : amount}</span>
+    <div className="q-meter" data-ring={ring ?? undefined} data-level={levelFor(pct)}>
+      <div className="q-meter__row">
+        {ring != null && <span className={`eg-gauge__key${ring > 1 ? ` eg-gauge__key--${ring}` : ''}`} aria-hidden="true" />}
+        <span className="q-meter__label">{meter.label}</span>
+        <b className="q-meter__value">{pct != null ? formatPercent(pct) : amount}</b>
       </div>
       {pct != null && (
-        <div
-          className="meter__track"
+        <span
+          className="eg-progress eg-progress--lg"
           role="progressbar"
           aria-label={meter.label}
           aria-valuenow={Math.round(pct)}
           aria-valuemin={0}
           aria-valuemax={100}
+          style={{ '--p': Math.min(100, Math.max(0, pct)) / 100 } as CSSProperties}
         >
-          <div className="meter__fill" style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
-        </div>
+          <span className="eg-progress__bar" />
+        </span>
       )}
-      {(reset || (pct != null && amount)) && (
-        <div className="meter__meta">
-          {pct != null && amount && <span>{amount}</span>}
-          {reset && <span>reinicia {reset}</span>}
-        </div>
-      )}
+      {meta && <span className="q-meter__meta">{meta}</span>}
     </div>
   );
 }

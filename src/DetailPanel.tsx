@@ -110,6 +110,8 @@ export function DetailPanel() {
   }, [toast]);
 
   if (!data) return null;
+  // El panel se diseña a la medida del DS (círculo de 56 px) y se escala entero con el tamaño de los círculos.
+  const zoom = Math.max(0.6, Math.min(1.5, data.orbSize / 56));
   const updated = data.updatedAt == null ? '—' : new Date(data.updatedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
   return (
     <div
@@ -121,10 +123,10 @@ export function DetailPanel() {
     >
       <div
         ref={panelRef}
-        className="panel"
+        className="panel q-panel eg-module-card eg-module-card--glass"
         role="dialog"
         aria-label={`Detalle de ${data.report.name}`}
-        style={{ left: 0, top: 0, width: data.width, maxHeight: data.maxHeight, overflowY: 'auto', '--orb': data.orbSize, visibility: positioned ? 'visible' : 'hidden' } as CSSProperties}
+        style={{ left: 0, top: 0, width: data.width / zoom, maxHeight: data.maxHeight / zoom, overflowY: 'auto', zoom, '--orb': data.orbSize, visibility: positioned ? 'visible' : 'hidden' } as CSSProperties}
       >
         <ProviderCard report={data.report} />
         <button className="panel__more" aria-expanded={detailsOpen} onClick={() => {
@@ -137,9 +139,9 @@ export function DetailPanel() {
         </button>
         {detailsOpen && <ProviderDetails key={data.report.id} report={data.report} />}
         <div className="panel__actions">
-          {OFFICIAL_USAGE_URL[data.report.id] && <button className="chip" onClick={() => openUrl(OFFICIAL_USAGE_URL[data.report.id]).catch(console.warn)}>Uso oficial ↗</button>}
-          <button className="chip" onClick={async () => setToast((await copyText(reportSummary(data.report))) ? 'Copiado ✓' : 'No se pudo copiar')}>{toast ?? 'Copiar resumen'}</button>
-          <button className="chip chip--muted" onClick={() => interact('hide')} title="Se sigue consultando y avisando; recupéralo en Ajustes">Ocultar</button>
+          {OFFICIAL_USAGE_URL[data.report.id] && <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={() => openUrl(OFFICIAL_USAGE_URL[data.report.id]).catch(console.warn)}>Uso oficial ↗</button>}
+          <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={async () => setToast((await copyText(reportSummary(data.report))) ? 'Copiado ✓' : 'No se pudo copiar')}>{toast ?? 'Copiar resumen'}</button>
+          <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={() => interact('hide')} title="Se sigue consultando y avisando; recupéralo en Ajustes">Ocultar</button>
         </div>
         <footer className="panel__foot"><span>Actualizado {updated}</span><span>cada {data.refreshMinutes} min</span></footer>
         {data.error && <p className="panel__error">{data.error}</p>}

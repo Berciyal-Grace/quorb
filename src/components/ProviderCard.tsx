@@ -1,29 +1,28 @@
 import type { UsageReport } from '../lib/types';
 import { formatMoney } from '../lib/format';
 import { MeterBar } from './MeterBar';
-import { RING_COLORS } from './RingGauge';
 import { api } from '../lib/api';
 import { ProviderLogo } from './ProviderLogo';
 
-const STATUS_LABEL: Record<UsageReport['status'], string> = {
-  ok: 'Al día',
-  warning: 'Atención',
-  error: 'Error',
-  needsLogin: 'Sin sesión',
-  unconfigured: 'Sin configurar',
+const STATUS: Record<UsageReport['status'], { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }> = {
+  ok: { label: 'Al día', tone: 'success' },
+  warning: { label: 'Atención', tone: 'warning' },
+  error: { label: 'Error', tone: 'danger' },
+  needsLogin: { label: 'Sin sesión', tone: 'danger' },
+  unconfigured: { label: 'Sin configurar', tone: 'neutral' },
 };
 
 function ActionButton({ report }: { report: UsageReport }) {
   if (report.action === 'login') {
     return (
-      <button className="btn btn--accent" onClick={() => api.openLogin(report.id).catch(console.error)}>
+      <button className="eg-btn eg-btn--primary eg-btn--sm" onClick={() => api.openLogin(report.id).catch(console.error)}>
         Iniciar sesión
       </button>
     );
   }
   if (report.action === 'settings') {
     return (
-      <button className="btn" onClick={() => api.openSettings().catch(console.error)}>
+      <button className="eg-btn eg-btn--secondary eg-btn--sm" onClick={() => api.openSettings().catch(console.error)}>
         Configurar
       </button>
     );
@@ -31,44 +30,61 @@ function ActionButton({ report }: { report: UsageReport }) {
   return null;
 }
 
-/** Detalle con barras: se abre al hacer clic en un círculo. */
+/** Cabecera y límites del panel de detalle (ModuleCard --glass del DS). */
 export function ProviderCard({ report }: { report: UsageReport }) {
   const { spend } = report;
-  let ringIndex = 0;
+  const status = STATUS[report.status];
+  let ring = 0;
   return (
-    <article className="card" data-status={report.status} data-provider={report.id}>
-      <header className="card__head">
-        <span className="card__logo logo">
+    <div className="q-card" data-status={report.status} data-provider={report.id}>
+      <div className="eg-module-card__head">
+        <span className="q-card__logo logo">
           <ProviderLogo id={report.id} name={report.name} />
         </span>
-        <h2 className="card__name">{report.name}</h2>
-        <span className="card__dot" title={STATUS_LABEL[report.status]} />
-        {report.plan && <span className="pill">{report.plan}</span>}
-        {report.stale && <span className="pill pill--muted" title="Datos del último ciclo correcto">caché</span>}
-      </header>
+        <h2 className="eg-module-card__name">{report.name}</h2>
+        {report.plan ? (
+          <span className="eg-status eg-status--neutral">{report.plan}</span>
+        ) : (
+          report.status !== 'ok' && <span className={`eg-status eg-status--${status.tone}`}>{status.label}</span>
+        )}
+        {report.stale && (
+          <span className="eg-status eg-status--neutral" title="Datos del último ciclo correcto">
+            caché
+          </span>
+        )}
+      </div>
 
       {report.meters.length > 0 && (
-        <div className="card__meters">
+        <div className="q-card__meters">
           {report.meters.map((m) => {
             // Mismo color que su anillo en el círculo.
-            const ring = m.percent != null ? ringIndex++ : -1;
-            return <MeterBar key={m.label} meter={m} color={ring >= 0 && ring < RING_COLORS.length ? RING_COLORS[ring] : undefined} />;
+            const r = m.percent != null && ring < 3 ? ++ring : null;
+            return <MeterBar key={m.label} meter={m} ring={r} />;
           })}
         </div>
       )}
 
       {spend && (
-        <div className="spend">
-          <span className="spend__label">{spend.periodLabel}</span>
-          <span className="spend__amount">{formatMoney(spend.amount, spend.currency)}</span>
+        <div className="q-card__stats">
+          <div className="eg-stat eg-stat--sm">
+            <span className="eg-stat__label">{spend.periodLabel}</span>
+            <span className="eg-stat__value">{formatMoney(spend.amount, spend.currency)}</span>
+          </div>
           {spend.budget != null && spend.budget > 0 && (
-            <span className="spend__budget">de {formatMoney(spend.budget, spend.currency)}</span>
+            <div className="eg-stat eg-stat--sm">
+              <span className="eg-stat__label">Presupuesto</span>
+              <span className="eg-stat__value">{formatMoney(spend.budget, spend.currency)}</span>
+            </div>
           )}
         </div>
       )}
 
-      {report.message && <p className="card__msg">{report.message}</p>}
+      {report.message && (
+        <div className={`eg-notice eg-notice--sm eg-notice--${report.status === 'ok' ? 'info' : status.tone === 'neutral' ? 'info' : status.tone}`} role="status">
+          <span className="eg-notice__text">{report.message}</span>
+        </div>
+      )}
       <ActionButton report={report} />
-    </article>
+    </div>
   );
 }

@@ -52,3 +52,5 @@ jobs:
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
+          # Activa los ficheros firmados del updater solo aquí; «npm run app:build» funciona sin claves.
+          args: --config src-tauri/tauri.release.conf.json

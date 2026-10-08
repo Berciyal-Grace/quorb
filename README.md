@@ -84,7 +84,7 @@ git tag v0.2.0
 git push --follow-tags
 ```
 
-The [release workflow](.github/workflows/release.yml) builds the installers, signs the update and publishes `latest.json`. One-time setup in the [Spanish docs](README.es.md#publicar-una-versión-y-actualizaciones-automáticas).
+The [release workflow](.github/workflows/release.yml) builds the installers, signs the update and publishes `latest.json`. One-time setup: `npm run setup:signing` (generates the signing key, writes the public key to `tauri.conf.json` and uploads the GitHub secrets with `gh`). `npm run app:build` builds an unsigned local installer without any keys.
 
 ## Privacy & how it works
 

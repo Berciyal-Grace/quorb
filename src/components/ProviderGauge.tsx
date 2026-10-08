@@ -1,11 +1,20 @@
-import type { ButtonHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, CSSProperties } from 'react';
 import type { UsageReport } from '../lib/types';
 import { peakMeter } from '../lib/format';
-import { RingGauge } from './RingGauge';
 import { ProviderLogo } from './ProviderLogo';
 
+/** Estado visual del Gauge (EGDEV Foundation): aviso, agotado o sin datos. */
+export function gaugeState(report: UsageReport, threshold = 90): 'over' | 'warning' | 'muted' | null {
+  const muted = report.status === 'needsLogin' || report.status === 'unconfigured' || report.status === 'error';
+  if (muted) return 'muted';
+  const peak = peakMeter(report)?.percent ?? 0;
+  if (peak >= 100) return 'over';
+  if (peak >= threshold || report.status === 'warning') return 'warning';
+  return null;
+}
+
 /**
- * Círculo de la tira siempre visible: solo anillos + logo, sin texto.
+ * Círculo de la tira: Gauge del DS (hasta tres anillos concéntricos + logo), sin texto.
  * Los detalles se ven en el panel que se abre al pasar el ratón.
  */
 export function ProviderGauge({
@@ -13,6 +22,7 @@ export function ProviderGauge({
   small,
   size,
   active,
+  threshold,
   dragging = false,
   onHover,
   pointer,
@@ -22,6 +32,8 @@ export function ProviderGauge({
   /** Diámetro en px */
   size: number;
   active: boolean;
+  /** Umbral de aviso (%) */
+  threshold?: number;
   onHover: (el: HTMLElement) => void;
   /** Se está arrastrando para reordenar */
   dragging?: boolean;
@@ -29,38 +41,38 @@ export function ProviderGauge({
   pointer?: Pick<ButtonHTMLAttributes<HTMLButtonElement>, 'onPointerDown' | 'onPointerMove' | 'onPointerUp'>;
 }) {
   const peak = peakMeter(report);
-  const all = report.meters.filter((m) => m.percent != null).map((m) => ({ percent: m.percent, label: m.label }));
-  // Pequeños: un único anillo con el límite más cercano.
-  // Con círculos muy pequeños, máximo dos anillos para que el logo siga viéndose.
-  const rings = small ? (peak ? [{ percent: peak.percent, label: peak.label }] : []) : all.slice(0, size < 40 ? 2 : 3);
-  const muted = report.status === 'needsLogin' || report.status === 'unconfigured' || report.status === 'error';
-  // El grosor de los anillos escala con el círculo (con un mínimo legible).
-  const stroke = Math.max(2.5, Math.round(size * (small ? 0.085 : 0.066) * 2) / 2);
-  const gap = Math.max(1, Math.round(size * 0.025 * 2) / 2);
-  const alert = muted || report.status === 'warning' || (peak?.percent ?? 0) >= 90;
+  const all = report.meters.filter((m) => m.percent != null).map((m) => m.percent ?? 0);
+  // Pequeños: un único anillo con el límite más cercano. Con círculos muy pequeños, máximo dos.
+  const rings = small ? (peak ? [peak.percent ?? 0] : []) : all.slice(0, size < 40 ? 2 : 3);
+  const list = rings.length ? rings : [0];
+  const state = gaugeState(report, threshold);
+  // Grosor y separación de los anillos escalan con el círculo (56 px = 4 px + 2 px, como el DS).
+  const w = Math.max(2.5, Math.round(size * (small ? 0.09 : 0.072) * 2) / 2);
+  const gap = Math.max(1.5, Math.round(size * 0.036 * 2) / 2);
 
+  const cls = ['orb', 'eg-gauge', state && `is-${state}`, active && 'is-hover'].filter(Boolean).join(' ');
   return (
     <button
       type="button"
-      className="orb"
+      className={cls}
       data-id={report.id}
-      data-active={active || undefined}
       data-dragging={dragging || undefined}
       data-status={report.status}
       aria-label={report.name}
       aria-expanded={active}
+      style={{ '--size': `${size}px`, '--w': `${w}px`, '--gap': `${gap}px` } as CSSProperties}
       onMouseEnter={(e) => onHover(e.currentTarget)}
       onFocus={(e) => onHover(e.currentTarget)}
       onClick={(e) => onHover(e.currentTarget)}
       onPointerCancel={pointer?.onPointerUp}
       {...pointer}
     >
-      <RingGauge rings={rings} size={size} stroke={stroke} gap={gap} muted={muted}>
-        <span className="logo">
-          <ProviderLogo id={report.id} name={report.name} />
-        </span>
-      </RingGauge>
-      {alert && <span className="orb__badge" data-kind={muted ? 'action' : 'hot'} aria-hidden="true" />}
+      {list.map((p, i) => (
+        <span key={i} className="eg-gauge__ring" style={{ '--p': Math.max(0, Math.min(100, p)) / 100 } as CSSProperties} />
+      ))}
+      <span className="eg-gauge__logo logo">
+        <ProviderLogo id={report.id} name={report.name} />
+      </span>
     </button>
   );
 }

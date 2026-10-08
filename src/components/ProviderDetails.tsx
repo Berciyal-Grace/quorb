@@ -124,8 +124,23 @@ export function ProviderDetails({ report }: { report: UsageReport }) {
   const pctMax = Math.min(100, Math.max(10, Math.ceil((peakPct * 1.15) / 5) * 5));
   const spendMax = Math.max(report.spend?.budget ?? 0, ...series.spend.map((p) => p[1]), 1);
 
+  // Aviso destacado (Notice --sm del DS) cuando a este ritmo un límite se agota antes de reiniciarse.
+  const risk = paces.find((p) => p.pace?.status === 'over');
+
   return (
     <div className="details">
+      {risk?.pace && (
+        <div className="eg-notice eg-notice--warning eg-notice--sm" role="status">
+          <svg className="eg-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+            <path d="M12 9v4" />
+            <path d="M12 17h.01" />
+          </svg>
+          <span className="eg-notice__text">
+            <b>A este ritmo</b> {shortLabel(risk.m.label)} se agota{risk.pace.exhaustAt ? ` ${untilText(risk.pace.exhaustAt)}` : ''}, antes del reinicio.
+          </span>
+        </div>
+      )}
       <section className="details__sec">
         <h3 className="details__title">Ritmo de consumo</h3>
         {paces.filter((p) => p.pace).length === 0 && !sp && <p className="hist__empty">Sin ventana de tiempo conocida para calcular el ritmo.</p>}
@@ -166,26 +181,30 @@ export function ProviderDetails({ report }: { report: UsageReport }) {
       <section className="details__sec">
         <div className="details__head">
           <h3 className="details__title">Historial</h3>
-          <span className="seg" role="tablist" aria-label="Rango">
+          <div className="eg-tabs eg-tabs--segmented eg-tabs--sm" role="tablist" aria-label="Rango del historial">
             {RANGES.map((r) => (
-              <button key={r.hours} role="tab" aria-selected={hours === r.hours} onClick={() => setHours(r.hours)}>
+              <button key={r.hours} type="button" role="tab" className="eg-tabs__item" aria-selected={hours === r.hours} onClick={() => setHours(r.hours)}>
                 {r.label}
               </button>
             ))}
-          </span>
+          </div>
         </div>
         {samples == null ? (
           <p className="hist__empty">Cargando…</p>
         ) : series.pct.some((s) => s.points.length) ? (
           <>
-            <Sparkline series={series.pct} max={pctMax} />
+            <div className="q-well">
+              <Sparkline series={series.pct} max={pctMax} />
+            </div>
             <span className="daily__axis">
               <span>{RANGES.find((r) => r.hours === hours)?.label}</span>
               <span>escala 0–{pctMax} %</span>
             </span>
           </>
         ) : series.spend.length ? (
-          <Sparkline series={[{ color: RING_COLORS[0], points: series.spend }]} max={spendMax} />
+          <div className="q-well">
+            <Sparkline series={[{ color: RING_COLORS[0], points: series.spend }]} max={spendMax} />
+          </div>
         ) : (
           <p className="hist__empty">Aún no hay lecturas guardadas.</p>
         )}

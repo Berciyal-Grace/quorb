@@ -13,6 +13,8 @@
     "tauri": "tauri",
     "app:dev": "tauri dev",
     "app:build": "tauri build",
+    "app:release": "tauri build --config src-tauri/tauri.release.conf.json",
+    "setup:signing": "node scripts/setup-signing.mjs",
     "bump": "node scripts/bump.mjs"
   },
   "dependencies": {

@@ -274,8 +274,8 @@ fn show_settings(app: &AppHandle) -> tauri::Result<()> {
     }
     WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App("index.html".into()))
         .title("Ajustes · Quorb")
-        .inner_size(560.0, 720.0)
-        .min_inner_size(440.0, 480.0)
+        .inner_size(1040.0, 760.0)
+        .min_inner_size(480.0, 520.0)
         .center()
         .build()?;
     Ok(())

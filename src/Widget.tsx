@@ -701,6 +701,7 @@ export function Widget() {
               small={small}
               size={orbSize}
               active={hovered === r.id}
+              threshold={config?.alerts.threshold}
               dragging={reorder?.id === r.id}
               onHover={(el) => openFor(r.id, el)}
               pointer={orbHandlers(r.id)}

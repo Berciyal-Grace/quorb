@@ -95,19 +95,26 @@ Y cambia el comando de login a `wsl claude` / `wsl codex login`.
 
 ### Preparación (una sola vez)
 
-1. **Genera la clave de firma** en tu PC (no la compartas ni la subas al repo):
+Crea el repo en GitHub (`egdev6/quorb`) y, si tienes [GitHub CLI](https://cli.github.com/), inicia sesión con `gh auth login`. Después:
 
-   ```powershell
-   npx tauri signer generate -w $env:USERPROFILE\.tauri\quorb.key
-   ```
+```powershell
+npm install
+npm run setup:signing
+```
 
-   Te pide una contraseña y crea `quorb.key` (privada) y `quorb.key.pub` (pública). **Guarda una copia de la privada**: si la pierdes, las versiones instaladas no aceptarán actualizaciones firmadas con otra.
-2. **Pega la clave pública** (el contenido de `quorb.key.pub`) en `src-tauri/tauri.conf.json` › `plugins.updater.pubkey`, en lugar de `PEGA_AQUI_TU_CLAVE_PUBLICA`, y súbelo.
-3. **Añade dos secretos** en GitHub (repo › Settings › Secrets and variables › Actions):
-   - `TAURI_SIGNING_PRIVATE_KEY`: el contenido de `quorb.key`.
-   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: su contraseña.
+El script:
 
-Para compilar en local con `npm run app:build` también necesitas esas dos variables de entorno, porque se generan los artefactos firmados del updater.
+1. Genera la clave de firma en `%USERPROFILE%\.tauri\quorb.key` (te pide una contraseña; si ya existe, la reutiliza y nunca la sobrescribe). **Guarda una copia de la clave y su contraseña**: si la pierdes, las versiones instaladas no aceptarán actualizaciones firmadas con otra.
+2. Pega la clave pública en `src-tauri/tauri.conf.json`.
+3. Sube `TAURI_SIGNING_PRIVATE_KEY` y `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` como secretos del repo con `gh`. Sin `gh`, te dice dónde pegarlos a mano.
+4. Mueve `docs/mover-a-.github` a `.github` (workflow de releases y plantillas de issues).
+
+### Compilar el instalador en local
+
+- `npm run app:build`: instalador `-setup.exe` y `.msi` **sin** los ficheros del updater. No necesita claves; sirve para probar.
+- `npm run app:release`: igual, pero firma la actualización (necesita las dos variables `TAURI_SIGNING_PRIVATE_KEY*`). Es lo que hace el workflow de GitHub.
+
+Los instaladores quedan en `src-tauri\target\release\bundle\nsis` y `\msi`.
 
 ### Cada versión
 
