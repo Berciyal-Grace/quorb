@@ -145,11 +145,9 @@ html[data-window='widget'], html[data-window='widget'] body { background: transp
   border-radius: 50%;
   background: transparent;
   cursor: default;
-  transition: transform 0.18s ease;
 }
-.orb:hover, .orb[data-active] { transform: scale(1.08); }
-.orb[data-active]::after {
-  /* halo del círculo activo */
+.orb:hover::after, .orb[data-active]::after {
+  /* halo del círculo al pasar el ratón o activarlo */
   content: '';
   position: absolute;
   inset: -4px;
