@@ -1,117 +1,199 @@
+<!-- egdev:lang:start -->
+<p align="right">
+  <img src="https://img.shields.io/badge/English-FF0036?style=for-the-badge&labelColor=0A0A0A&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MCAzMCI%2BPGNsaXBQYXRoIGlkPSJ0Ij48cGF0aCBkPSJNMzAsMTVoMzB2MTV6djE1aC0zMHpoLTMwdi0xNXp2LTE1aDMweiIvPjwvY2xpcFBhdGg%2BPHBhdGggZD0iTTAsMHYzMGg2MHYtMzB6IiBmaWxsPSIjMDEyMTY5Ii8%2BPHBhdGggZD0iTTAsMCA2MCwzME02MCwwIDAsMzAiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSI2Ii8%2BPHBhdGggZD0iTTAsMCA2MCwzME02MCwwIDAsMzAiIGNsaXAtcGF0aD0idXJsKCN0KSIgc3Ryb2tlPSIjQzgxMDJFIiBzdHJva2Utd2lkdGg9IjQiLz48cGF0aCBkPSJNMzAsMHYzME0wLDE1aDYwIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMTAiLz48cGF0aCBkPSJNMzAsMHYzME0wLDE1aDYwIiBzdHJva2U9IiNDODEwMkUiIHN0cm9rZS13aWR0aD0iNiIvPjwvc3ZnPg%3D%3D" alt="English" />
+  <a href="./README.es.md"><img src="https://img.shields.io/badge/Espa%C3%B1ol-1F1F1F?style=for-the-badge&labelColor=0A0A0A&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA3NTAgNTAwIj48cmVjdCB3aWR0aD0iNzUwIiBoZWlnaHQ9IjUwMCIgZmlsbD0iI2M2MGIxZSIvPjxyZWN0IHdpZHRoPSI3NTAiIGhlaWdodD0iMjUwIiB5PSIxMjUiIGZpbGw9IiNmZmM0MDAiLz48L3N2Zz4%3D" alt="Español" /></a>
+</p>
+<!-- egdev:lang:end -->
+
+<!-- egdev:header:start -->
+<img src="./.github/assets/banner.png" alt="Quorb banner" width="100%" />
+
 <div align="center">
+
+[![Version](https://img.shields.io/github/package-json/v/egdev6/quorb?style=for-the-badge&labelColor=0A0A0A&color=FF0036&label=version)](https://github.com/egdev6/quorb/blob/main/package.json)
+[![Stars](https://img.shields.io/github/stars/egdev6/quorb?style=for-the-badge&labelColor=0A0A0A&color=FF0036)](https://github.com/egdev6/quorb/stargazers)
+[![Issues](https://img.shields.io/github/issues/egdev6/quorb?style=for-the-badge&labelColor=0A0A0A&color=FF0036)](https://github.com/egdev6/quorb/issues)
+[![License](https://img.shields.io/github/license/egdev6/quorb?style=for-the-badge&labelColor=0A0A0A&color=FF0036)](./LICENSE)
+
+</div>
+<!-- egdev:header:end -->
 
 # Quorb
 
-**Your AI quotas, always in sight.**
-Edge-docked usage rings for Claude, Codex, Gemini, Cursor, Copilot, OpenRouter and more — on Windows.
+Your AI quotas, always in sight: usage, remaining capacity and spending across your AI subscriptions and APIs on Windows.
 
-**English** · [Español](README.es.md)
+## What is it
 
-[![Release](https://img.shields.io/github/v/release/egdev6/quorb?color=ff0036)](https://github.com/egdev6/quorb/releases)
-[![Stars](https://img.shields.io/github/stars/egdev6/quorb?style=flat&color=ff0036)](https://github.com/egdev6/quorb/stargazers)
-[![License: MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE)
-![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-black?logo=windows)
-![Tauri 2](https://img.shields.io/badge/Tauri-2-black?logo=tauri)
+Quorb brings your AI limits into one local desktop utility. Check how much you have used, how fast you are consuming it and when your limits reset, without opening a separate dashboard for every provider.
 
-<!-- Record a 10–15 s GIF: strip → hover panel → pace & history → confetti. Save it as docs/demo.gif -->
-<img src="docs/demo.gif" alt="Quorb demo: usage rings docked to the screen edge" width="820">
+Its edge-docked widget is compact, transparent and always on top. Hover over a provider for its limits, plan, spending, pace and history.
 
+<p align="center"><img src="./.github/assets/project-image.png" alt="Promotional illustration of Quorb's usage strip" width="100%" /></p>
+
+<!-- egdev:stack:start -->
+## Stack
+<div align="center">
+<a href="https://github.com/Gentleman-Programming/gentle-ai">
+  <img width="220" src="https://raw.githubusercontent.com/Gentleman-Programming/gentle-ai/main/docs/assets/brand/built-with-gentle-ai.png" alt="Built with Gentle-AI" />
+</a>
 </div>
 
----
+<div align="center">
 
-You pay for Claude Max, ChatGPT Plus, Cursor, Copilot… and you only find out you're out of quota when the model stops answering. **Quorb** sits on the edge of your screen as a slim strip of rings — one per subscription — so you always know how much is left, how fast you're burning it and when it resets.
+![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 
-## Features
+![Tauri](https://img.shields.io/badge/Tauri-24C8D8?style=for-the-badge&logo=tauri&logoColor=white)
+![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)
+![npm](https://img.shields.io/badge/npm-CB3837?style=for-the-badge&logo=npm&logoColor=white)
 
-- 🟠 **Edge-docked strip of rings** — logo in the middle, one ring per limit (5-hour session, weekly, per model). Drag it anywhere; it snaps to the nearest screen edge and turns vertical on the sides.
-- 🔍 **Hover for details** — bars, percentages, reset times, plan and spend. The panel scales with the ring size.
-- 📈 **Pace & history** — “at this rate you'll run out in 8 h”, plus a local 24 h / 7 d / 30 d history.
-- 🎉 **Alerts at two moments** — when you cross your limit and when it resets: Windows notification + a full-screen effect (confetti, danger glow, or your own transparent video / GIF) that never steals your mouse.
-- 🎨 **Make it yours** — 32–80 px rings, any RGB accent (the other tones and glows are derived), auto-hide, reorder or hide rings.
-- ⌨️ **Global shortcuts** — `Ctrl+Alt+U` toggle, `Ctrl+Alt+I` open the busiest provider, `Ctrl+Alt+R` refresh. Remappable.
-- 🔄 **Auto-updates** — signed releases from GitHub; a download icon shows up in the strip when there's a new version.
-- 🔐 **Private by design** — no server, no telemetry. Keys live in Windows Credential Manager; OAuth sessions are read from the official CLIs and never refreshed or modified.
+</div>
+<!-- egdev:stack:end -->
 
-<img src="docs/collage.png" alt="Everything Quorb ships with" width="820">
+## Quick start
 
-## Supported providers
-
-| Provider | What you see | How it connects | Official API |
-|---|---|---|:---:|
-| **Claude** Pro / Max | 5-hour session, weekly, Opus | Claude Code login (`claude` → `/login`) | ❌ |
-| **ChatGPT** Plus / Pro · Codex | 5-hour and weekly limits | Codex CLI login (`codex login`) | ❌ |
-| **Gemini** (AI Pro / Code Assist) | Daily quota per model | Gemini CLI Google login | ❌ |
-| **Cursor** | Plan usage (total, Auto, API models) + on-demand spend | Cursor app session (read-only) | ❌ |
-| **GitHub Copilot** | Premium requests vs. your plan | Fine-grained token (“Plan: read”) | ✅ |
-| **OpenRouter** | Daily / monthly spend, key limit, credits | API key | ✅ |
-| **NaN Builders** | Plan quota + tokens per day | Email magic link or API key | ⚠️ |
-| **Anthropic API** | Monthly cost | Admin key | ✅ |
-| **OpenAI API** | Monthly cost | Admin key | ✅ |
-
-❌ = undocumented endpoint, the same one the official app uses; it may change without notice. Missing your tool? [Request a provider](https://github.com/egdev6/quorb/issues/new?template=provider-request.md).
-
-## Install
-
-1. Download the latest `.msi` or `-setup.exe` from [**Releases**](https://github.com/egdev6/quorb/releases).
-2. Run it. Quorb starts in the tray and shows the strip on the top edge.
-3. Open **Settings** (gear icon or tray menu) and enable the providers you use. Claude, Codex, Gemini and Cursor work as soon as you're logged into their official app/CLI.
-
-After that, Quorb keeps itself up to date: it checks GitHub Releases on startup and every 6 hours, and only installs updates signed with the project's key (Settings › Updates).
-
-> Windows may show a SmartScreen warning because the installer is not code-signed yet: **More info → Run anyway**.
-
-## Build from source
-
-Requirements: [Rust](https://rustup.rs) (MSVC toolchain), Microsoft C++ Build Tools, WebView2 (included in Windows 10/11) and Node 22+. See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+Quorb currently targets Windows. You need Node 22+, Rust with the MSVC toolchain, Microsoft C++ Build Tools and WebView2. See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ```powershell
 git clone https://github.com/egdev6/quorb
 cd quorb
 npm install
-npm run app:dev      # dev with hot reload
-npm run app:build    # installer in src-tauri\target\release\bundle
+npm run app:dev
 ```
 
-Tests: `npm test` and `cd src-tauri && cargo test`.
+Open Settings and enable the providers you use. Claude, Codex, Gemini and Cursor read existing sessions from their official tools; other providers require the credentials listed below.
 
-## Releasing (maintainers)
+To build a local installer, run `npm run app:build`. Outputs are written under `src-tauri/target/release/bundle`.
 
-```powershell
-npm run bump 0.2.0
-git commit -am "release v0.2.0"
-git tag v0.2.0
-git push --follow-tags
-```
+> No public GitHub release was available when this README was written. The repository is currently private; cloning requires access. Do not assume a public installer is available.
 
-The [release workflow](.github/workflows/release.yml) builds the installers, signs the update and publishes `latest.json`. One-time setup: `npm run setup:signing` (generates the signing key, writes the public key to `tauri.conf.json` and uploads the GitHub secrets with `gh`). `npm run app:build` builds an unsigned local installer without any keys.
+## Scripts
 
-## Privacy & how it works
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Frontend development server |
+| `npm run build` | Type-check and build the frontend |
+| `npm run app:dev` | Run the desktop app with hot reload |
+| `npm run app:build` | Build a local installer |
+| `npm run typecheck` | TypeScript checks |
+| `npm test` | Vitest tests |
+| `cd src-tauri; cargo test` | Rust tests |
+| `npm run bump x.y.z` | Update the version |
+| `npm run setup:signing` | Maintainer signing setup; creates keys and can upload GitHub secrets |
+| `npm run app:release` | Build a signed update; requires signing credentials |
 
-- Everything runs locally. Quorb only talks to each provider's own endpoints.
-- API keys and the NaN session are stored in **Windows Credential Manager**, never on disk or in the UI.
-- For Claude, Codex, Gemini and Cursor, Quorb **reads** the session the official tool already stored. It never writes to those files and never rotates refresh tokens, so your CLI stays logged in. (Gemini's short-lived access token is refreshed in memory only.)
-- There is no “Sign in with Claude/OpenAI” button because neither offers third-party OAuth for consumer plans — login always happens in the official CLI.
-- Using undocumented endpoints is a grey area. Use Quorb knowing they can change or stop working.
+## Architecture
 
-More details (WSL paths, data files, project layout, adding a provider) in the [Spanish docs](README.es.md).
+React 19 and TypeScript handle the widget, settings and overlays. Tauri 2 and Rust handle windows, provider requests, local configuration, history and Windows Credential Manager.
 
-## Roadmap
+- `src/Widget.tsx` and `src/DetailPanel.tsx`: docked strip and usage details.
+- `src/Settings.tsx` and `src/Overlay.tsx`: settings and notification effects.
+- `src/lib/`: palette, pace, ordering, updater and tests.
+- `src-tauri/src/providers/`: provider integrations.
+- `src-tauri/src/history.rs`, `config.rs` and `secrets.rs`: local data and credentials.
 
-- [x] Auto-updates from GitHub Releases
-- [ ] Code-signed installer + `winget install quorb`
-- [ ] Click-through mode
-- [ ] GLM 4-hour window on NaN Builders
-- [ ] macOS / Linux builds
+### Supported providers
+
+| Provider | Data | Connection |
+| --- | --- | --- |
+| Claude Pro / Max | Session and weekly limits | Official Claude Code login |
+| ChatGPT Plus / Pro · Codex | Session and weekly limits | Official Codex CLI login |
+| Gemini | Daily quota per model | Gemini CLI login |
+| Cursor | Plan usage and on-demand spend | Read-only app session |
+| GitHub Copilot | Premium requests | Fine-grained token with Plan read access |
+| OpenRouter | Spend, key limit and credits | API key |
+| NaN Builders | Plan quota and daily tokens | Email magic link or API key |
+| Anthropic API / OpenAI API | Monthly cost | Admin API keys |
+
+Some integrations use undocumented endpoints, which may change or stop working. Copilot, OpenRouter and the cost APIs use official APIs; NaN combines documented API access with undocumented dashboard endpoints.
+
+### Features
+
+- Drag the strip to any screen edge; it becomes vertical on the sides.
+- Hover for percentages, reset times, plan and spending.
+- Track consumption pace and local history over 24 hours, 7 days or 30 days.
+- Receive Windows notifications and configurable effects at the threshold and when limits reset.
+- Adjust size, RGB accent, opacity, order, hidden providers and auto-hide.
+- Use remappable global shortcuts: `Ctrl+Alt+U`, `Ctrl+Alt+I`, `Ctrl+Alt+R`.
+- Update from signed GitHub releases when published; the app checks on startup and every six hours.
+
+<details>
+<summary>Visual overview — promotional illustrations, not raw screenshots</summary>
+
+<img src="./.github/assets/01-cuotas.png" alt="Usage overview" width="100%" />
+
+<img src="./.github/assets/02-detalle.png" alt="Usage detail" width="100%" />
+
+<img src="./.github/assets/03-ritmo.png" alt="Pace and history" width="100%" />
+
+<img src="./.github/assets/04-vertical.png" alt="Vertical strip" width="100%" />
+
+<img src="./.github/assets/05-colores.png" alt="Accent colors" width="100%" />
+
+<img src="./.github/assets/06-atajos.png" alt="Global shortcuts" width="100%" />
+
+<img src="./.github/assets/09-apariencia.png" alt="Appearance" width="100%" />
+
+<img src="./.github/assets/10-proveedores.png" alt="Providers" width="100%" />
+
+</details>
+
+### Privacy and local data
+
+API keys and the NaN session are stored in Windows Credential Manager. Official CLI/app session files are read without writing to them or rotating refresh tokens. Gemini refreshes its short-lived access token in memory. If a CLI login expires, sign in again through the official tool.
+
+Configuration and history are stored under `%APPDATA%\es.egdev.quorb`. Quorb calls provider endpoints directly; no separate backend is required. History covers up to 30 days.
+
+For WSL sessions, configure the credential file paths in Settings, for example `\\wsl.localhost\Ubuntu\home\YOUR_USER\.codex\auth.json`, and set the login command to `wsl codex login` or `wsl claude` as appropriate.
+
+### Roadmap
+
+Code signing and winget distribution, click-through mode, NaN's GLM four-hour window and macOS/Linux builds remain roadmap items, not current capabilities.
 
 ## Contributing
 
-Issues and PRs are welcome — especially new providers. Each one is a single Rust file in [`src-tauri/src/providers`](src-tauri/src/providers) that returns a `UsageReport`; see “Añadir un proveedor” in the [Spanish docs](README.es.md#añadir-un-proveedor).
+Issues and PRs are welcome, especially provider integrations. A provider lives in `src-tauri/src/providers/<name>.rs`; wire its configuration and frontend settings as well.
 
-If Quorb saves you from a surprise rate limit, a ⭐ helps others find it.
+The existing technical documentation is preserved in the [original English guide](./docs/original-readme.en.md) and [original Spanish guide](./docs/original-readme.es.md). These are historical copies: relative links and release instructions may need updating before reuse.
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the local setup, the provider integration steps and the maintainer release flow.
+
+## Resources
+
+- [Source code](https://github.com/egdev6/quorb)
+- [Issues](https://github.com/egdev6/quorb/issues)
+- [Releases, when published](https://github.com/egdev6/quorb/releases)
+- [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
 
 ## License
 
-[MIT](LICENSE) © Enrique Gómez Navarro — [egdev.es](https://egdev.es) · [@egdev66](https://x.com/egdev66) · [Twitch](https://twitch.tv/egdev6)
+[MIT](./LICENSE) © Enrique Gómez Navarro. Quorb is not affiliated with Anthropic, OpenAI, Google, Anysphere, GitHub, OpenRouter or NaN Builders; trademarks belong to their respective owners.
 
-<sub>Not affiliated with Anthropic, OpenAI, Google, Anysphere, GitHub, OpenRouter or NaN Builders. All trademarks belong to their owners.</sub>
+<!-- egdev:contact:start -->
+## Contact
+<div align="center">
+
+[![Web](https://img.shields.io/badge/egdev.es-FF0036?style=for-the-badge&logo=googlechrome&logoColor=white)](https://egdev.es)
+[![YouTube](https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/@egdev6)
+[![Twitch](https://img.shields.io/badge/Twitch-9146FF?style=for-the-badge&logo=twitch&logoColor=white)](https://twitch.tv/egdev6)
+[![X](https://img.shields.io/badge/X-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/egdev66)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/egdev6/)
+[![Instagram](https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white)](https://www.instagram.com/egdev6/)
+[![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/egdev6)
+![Discord](https://img.shields.io/badge/Egdev5285-5865F2?style=for-the-badge&logo=discord&logoColor=white)
+[![Gmail](https://img.shields.io/badge/Gmail-EA4335?style=for-the-badge&logo=gmail&logoColor=white)](mailto:egdev6@gmail.com)
+
+</div>
+<!-- egdev:contact:end -->
+
+<!-- egdev:footer:start -->
+---
+
+<div align="center">
+
+**⭐ If you find this project useful, consider giving it a star on GitHub ⭐**
+
+</div>
+<!-- egdev:footer:end -->
