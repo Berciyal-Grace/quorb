@@ -7,7 +7,9 @@ import { getVersion } from '@tauri-apps/api/app';
 import { api } from './lib/api';
 import { ORB_SIZE, type AlertMoment, type AppConfig, type Effect, type MediaSize, type SecretKey, type SecretStatus } from './lib/types';
 import { ACCENT_PRESETS, DEFAULT_ACCENT, derivePalette, normalizeHex } from './lib/palette';
-import { isDirty, liveSaveConfig, reconcileSaved } from './lib/settings-dirty';
+import { isDirty, isSettingsDirty, liveSaveConfig, reconcileSaved } from './lib/settings-dirty';
+import { createAutostartController } from './lib/autostart-controller';
+import { runMixedSave, mixedSaveMessage } from './lib/settings-save';
 import { comboFromEvent, prettyCombo } from './lib/shortcuts';
 import { ProviderLogo } from './components/ProviderLogo';
 import quorbLogo from './assets/quorb-logo.png';
@@ -534,7 +536,13 @@ export function Settings() {
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [baseline, setBaseline] = useState<AppConfig | null>(null);
   const [secrets, setSecrets] = useState<SecretStatus>({});
-  const [autostart, setAutostart] = useState(false);
+  const [autostartController] = useState(() => createAutostartController({ read: isEnabled, enable, disable }));
+  const [autostartState, setAutostartState] = useState(() => autostartController.getState());
+  const [autostartDraft, setAutostartDraft] = useState<boolean | null>(null);
+  // El borrador solo se siembra con la primera lectura: los reintentos no pisan ediciones.
+  const autostartDraftReady = useRef(false);
+  // Guarda síncrona además de `saving`: evita guardados manuales solapados.
+  const savingRef = useRef(false);
   const [saved, setSaved] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<ProviderTab>(loadTab);
@@ -559,15 +567,19 @@ export function Settings() {
   };
   const [shortcutErrors, setShortcutErrors] = useState<string[]>([]);
   const sizeTimer = useRef<number | undefined>(undefined);
+  const savedTimer = useRef<number | undefined>(undefined);
   const pendingLive = useRef<Partial<AppConfig>>({});
   const writeChain = useRef<Promise<unknown>>(Promise.resolve());
+  // Ciclo de vida: en `false` no se actualiza la UI ni se recrean timers.
+  const aliveRef = useRef(true);
 
   // Cola de escrituras de config de Ajustes: el guardado inmediato y el completo
   // no se pisan a medias y la base solo avanza con lo que confirma el backend.
   const enqueueSave = useCallback((build: () => AppConfig | Promise<AppConfig>): Promise<AppConfig> => {
     const run = writeChain.current.then(async () => {
       const savedCfg = await api.saveConfig(await build());
-      setBaseline(savedCfg);
+      // Si el componente ya no está, no se actualiza la base ni se notifica nada.
+      if (aliveRef.current) setBaseline(savedCfg);
       return savedCfg;
     });
     writeChain.current = run.then(
@@ -593,12 +605,39 @@ export function Settings() {
       .catch(console.error);
     loadSecrets();
     api.shortcutErrors().then(setShortcutErrors).catch(() => {});
-    isEnabled().then(setAutostart).catch(() => setAutostart(false));
+  }, []);
+
+  // Ciclo de vida del autostart (simétrico para StrictMode): la lectura inicial
+  // la dispara `start()`; `stop()` descarta resultados en vuelo al desmontar.
+  useEffect(() => {
+    const off = autostartController.subscribe((s) => {
+      setAutostartState(s);
+      if (s.confirmed !== null && !autostartDraftReady.current) {
+        autostartDraftReady.current = true;
+        setAutostartDraft(s.confirmed);
+      }
+    });
+    autostartController.start();
+    return () => {
+      off();
+      autostartController.stop();
+    };
+  }, [autostartController]);
+
+  // Ciclo de vida del componente: al desmontar se marca inactivo y se limpian
+  // los timers. Simétrico para StrictMode (setup/cleanup/setup).
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      window.clearTimeout(sizeTimer.current);
+      window.clearTimeout(savedTimer.current);
+    };
   }, []);
 
   if (!cfg) return <div className="q-settings" />;
 
-  const dirty = isDirty(baseline, cfg);
+  const dirty = isSettingsDirty(baseline, cfg, autostartState.confirmed, autostartDraft);
 
   const set = <K extends keyof AppConfig>(key: K, patch: Partial<AppConfig[K]> | AppConfig[K]) =>
     setCfg((c) =>
@@ -621,38 +660,62 @@ export function Settings() {
       pendingLive.current = {};
       // Parte de la config persistida, no del borrador: así no arrastra otros
       // cambios sin guardar ni pierde escrituras anteriores encadenadas.
-      enqueueSave(() => api.getConfig().then((current) => liveSaveConfig(current, toSave))).catch((e) => setSaved(String(e)));
+      enqueueSave(() => api.getConfig().then((current) => liveSaveConfig(current, toSave))).catch((e) => {
+        if (aliveRef.current) setSaved(String(e));
+      });
     }, 120);
   };
   const changeOrbSize = (v: number) => liveSave({ orbSize: v });
   const changeAccent = (hex: string) => liveSave({ accentColor: normalizeHex(hex) });
 
   const save = async () => {
-    if (saving) return;
-    const snapshot = cfg; // lo que se envía; puede quedar obsoleto durante el await
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
+    const snapshot = cfg; // lo que se envía; puede quedar obsoleto durante el await
+    const desired = autostartDraft; // instantánea del borrador al pulsar Guardar
+    const cfgDirtyNow = isDirty(baseline, snapshot);
+    const autostartDirtyNow = autostartState.confirmed !== null && desired !== null && desired !== autostartState.confirmed;
+    let message: string | null = null;
     try {
-      const savedCfg = await enqueueSave(() => snapshot);
-      // No descartes ediciones hechas mientras se guardaba: adopta lo canónico
-      // del backend salvo en los campos que el usuario tocó después.
-      setCfg((latest) => (latest ? reconcileSaved(snapshot, savedCfg, latest) : savedCfg));
-      setShortcutErrors(await api.shortcutErrors().catch(() => []));
-      setSaved('Guardado ✓');
+      const result = await runMixedSave(
+        {
+          configDirty: cfgDirtyNow,
+          configSnapshot: snapshot,
+          autostartDirty: autostartDirtyNow,
+          autostartDesired: desired ?? autostartState.confirmed ?? false,
+        },
+        {
+          saveConfig: (s) => enqueueSave(() => s),
+          applyAutostart: (d) => autostartController.apply(d),
+        },
+      );
+      // El backend ya escribió; si el componente se desmontó a mitad, no tocamos UI.
+      if (!aliveRef.current) return;
+      if (result.config.status === 'saved') {
+        const savedCfg = result.config.saved;
+        // No descartes ediciones hechas mientras se guardaba: adopta lo canónico
+        // del backend salvo en los campos que el usuario tocó después.
+        setCfg((latest) => (latest ? reconcileSaved(snapshot, savedCfg, latest) : savedCfg));
+        const errors = await api.shortcutErrors().catch(() => []);
+        if (!aliveRef.current) return;
+        setShortcutErrors(errors);
+      }
+      // Mensaje explícito por parte: nunca un «Guardado ✓» conjunto falso.
+      message = mixedSaveMessage(result);
+      setSaved(message);
     } catch (e) {
-      setSaved(String(e));
+      if (aliveRef.current) {
+        message = String(e);
+        setSaved(message);
+      }
     } finally {
-      setSaving(false);
-      window.setTimeout(() => setSaved(null), 2500);
-    }
-  };
-
-  const toggleAutostart = async (v: boolean) => {
-    try {
-      if (v) await enable();
-      else await disable();
-      setAutostart(await isEnabled());
-    } catch (e) {
-      console.error(e);
+      // El candado se libera siempre, aunque el componente se haya desmontado.
+      savingRef.current = false;
+      if (aliveRef.current) {
+        setSaving(false);
+        if (message) savedTimer.current = window.setTimeout(() => setSaved(null), 2500);
+      }
     }
   };
 
@@ -721,9 +784,31 @@ export function Settings() {
               <p className="q-head__desc">{page.desc}</p>
             </div>
             <label className="eg-check eg-check--switch">
-              <input type="checkbox" checked={autostart} onChange={(e) => toggleAutostart(e.target.checked)} /> Arrancar con Windows
+              <input
+                type="checkbox"
+                checked={autostartDraft ?? autostartState.confirmed ?? false}
+                disabled={autostartState.busy || autostartState.confirmed === null}
+                onChange={(e) => setAutostartDraft(e.target.checked)}
+              />{' '}
+              Arrancar con Windows
             </label>
           </header>
+
+          {autostartState.error && (
+            <div className="eg-notice eg-notice--warning eg-notice--sm" role="alert">
+              <span className="eg-notice__text">
+                {autostartState.confirmed === null ? 'No se pudo leer «Arrancar con Windows»: ' : ''}
+                {autostartState.error}
+              </span>
+              {autostartState.confirmed === null && (
+                <span className="eg-notice__actions">
+                  <button type="button" className="eg-btn eg-btn--secondary eg-btn--sm" disabled={autostartState.busy} onClick={() => void autostartController.load()}>
+                    Reintentar
+                  </button>
+                </span>
+              )}
+            </div>
+          )}
 
           {section === 'providers' && (
             <>

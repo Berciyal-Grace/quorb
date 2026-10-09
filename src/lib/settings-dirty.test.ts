@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AppConfig } from './types';
-import { isDirty, liveSaveConfig, reconcileSaved } from './settings-dirty';
+import { isDirty, isSettingsDirty, liveSaveConfig, reconcileSaved } from './settings-dirty';
 
 const alerts = (over: Partial<AppConfig['alerts']> = {}): AppConfig['alerts'] => ({
   enabled: true,
@@ -71,6 +71,32 @@ describe('liveSaveConfig', () => {
     expect(saved.orbSize).toBe(60);
     expect(saved.refreshMinutes).toBe(5);
     expect(isDirty(saved, { ...base, orbSize: 60, refreshMinutes: 30 })).toBe(true);
+  });
+});
+
+describe('isSettingsDirty', () => {
+  const base = config();
+
+  it('combines the manual config dirty flag with the autostart draft', () => {
+    expect(isSettingsDirty(base, base, true, true)).toBe(false);
+    expect(isSettingsDirty(base, { ...base, refreshMinutes: 30 }, true, true)).toBe(true);
+    expect(isSettingsDirty(base, base, true, false)).toBe(true);
+    expect(isSettingsDirty(base, base, true, true)).toBe(false);
+  });
+
+  it('clears the autostart dirty flag when the draft returns to the confirmed value', () => {
+    expect(isSettingsDirty(base, base, true, false)).toBe(true);
+    expect(isSettingsDirty(base, base, true, true)).toBe(false);
+  });
+
+  it('treats an unknown OS basis as not dirty', () => {
+    expect(isSettingsDirty(base, base, null, true)).toBe(false);
+    expect(isSettingsDirty(base, base, true, null)).toBe(false);
+  });
+
+  it('does not clear the autostart dirty flag when only a live field is saved', () => {
+    const withLive = { ...base, orbSize: 60 };
+    expect(isSettingsDirty(base, withLive, true, false)).toBe(true);
   });
 });
 
