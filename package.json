@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --dir src && node --test scripts/bump.test.mjs scripts/release-check.test.mjs",
+    "test": "vitest run --dir src && node --test scripts/bump.test.mjs scripts/release-check.test.mjs scripts/setup-signing.test.mjs",
     "tauri": "tauri",
     "app:dev": "tauri dev",
     "app:build": "tauri build",
