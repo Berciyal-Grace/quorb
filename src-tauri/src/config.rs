@@ -64,6 +64,51 @@ pub struct AppConfig {
     pub accounts: Vec<Account>,
 }
 
+/// Campos que el widget puede cambiar por su cuenta. Deliberadamente no incluye
+/// cuentas ni secretos: un snapshot obsoleto del widget no puede borrar cuentas.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct WidgetPatch {
+    pub dock_edge: Option<String>,
+    pub dock_offset: Option<f64>,
+    /// `null` explícito = sin monitor concreto; ausente = no cambiar.
+    #[serde(default, deserialize_with = "double_option")]
+    pub dock_monitor: Option<Option<String>>,
+    pub provider_order: Option<Vec<String>>,
+    pub hidden_providers: Option<Vec<String>>,
+}
+
+/// Distingue un campo ausente (`None`) de un `null` explícito (`Some(None)`).
+fn double_option<'de, D, T>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Deserialize::deserialize(de).map(Some)
+}
+
+impl AppConfig {
+    /// Aplica solo los campos del widget sobre la config actual. Los campos
+    /// ausentes se conservan y el resto (cuentas, atajos, avisos…) no se toca.
+    pub fn apply_widget_patch(&mut self, patch: WidgetPatch) {
+        if let Some(edge) = patch.dock_edge {
+            self.dock_edge = edge;
+        }
+        if let Some(offset) = patch.dock_offset {
+            self.dock_offset = offset;
+        }
+        if let Some(monitor) = patch.dock_monitor {
+            self.dock_monitor = monitor;
+        }
+        if let Some(order) = patch.provider_order {
+            self.provider_order = order;
+        }
+        if let Some(hidden) = patch.hidden_providers {
+            self.hidden_providers = hidden;
+        }
+    }
+}
+
 /// Proveedores que admiten cuentas adicionales (todos).
 pub const ACCOUNT_PROVIDERS: [&str; 9] =
     ["claude", "codex", "gemini", "cursor", "copilot", "nan", "openrouter", "anthropic_api", "openai_api"];
@@ -535,5 +580,41 @@ mod tests {
         let mut cfg = AppConfig::default();
         cfg.claude.credentials_path = Some("  ".into());
         assert_eq!(cfg.sanitized().claude.credentials_path, None);
+    }
+
+    #[test]
+    fn widget_patch_preserves_accounts_saved_after_the_widget_snapshot() {
+        // Config «actual» del backend, ya con la cuenta que Ajustes acaba de guardar.
+        let saved: AppConfig = serde_json::from_str(
+            r#"{"accounts":[{"id":"openrouter:abc123","provider":"openrouter","label":"Cuenta 2"}]}"#,
+        )
+        .unwrap();
+        // El widget traía un snapshot obsoleto (sin esa cuenta) pero solo manda campos suyos.
+        let patch: WidgetPatch =
+            serde_json::from_str(r#"{"dockEdge":"left","dockOffset":0.25,"providerOrder":["claude"]}"#).unwrap();
+        let mut next = saved.clone();
+        next.apply_widget_patch(patch);
+        let next = next.sanitized();
+        assert_eq!(next.dock_edge, "left");
+        assert_eq!(next.dock_offset, 0.25);
+        assert_eq!(next.provider_order, vec!["claude".to_string()]);
+        assert_eq!(next.accounts.len(), 1);
+        assert_eq!(next.accounts[0].id, "openrouter:abc123");
+        // Un patch vacío no toca nada.
+        let mut untouched = saved.clone();
+        untouched.apply_widget_patch(WidgetPatch::default());
+        assert_eq!(untouched.sanitized(), saved.sanitized());
+    }
+
+    #[test]
+    fn widget_patch_can_clear_the_monitor_and_hidden_providers() {
+        let mut cfg = AppConfig::default();
+        cfg.dock_monitor = Some("DELL".into());
+        cfg.hidden_providers = vec!["nan".into()];
+        let patch: WidgetPatch = serde_json::from_str(r#"{"dockMonitor":null,"hiddenProviders":[]}"#).unwrap();
+        cfg.apply_widget_patch(patch);
+        let cfg = cfg.sanitized();
+        assert_eq!(cfg.dock_monitor, None);
+        assert!(cfg.hidden_providers.is_empty());
     }
 }

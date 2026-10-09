@@ -1,5 +1,5 @@
 // Cuentas adicionales de un proveedor (src-tauri/src/config.rs › Account).
-import type { Account, AccountProvider, AppConfig, ScopedSecretKey, SecretKey } from './types';
+import type { Account, AccountProvider, AppConfig, ScopedSecretKey, SecretKey, SecretStatus } from './types';
 
 /** Proveedor de un id de informe: `claude` o `claude:trabajo` → `claude`. */
 export const providerOf = (id: string): string => id.split(':')[0];
@@ -58,3 +58,28 @@ export const ACCOUNT_SECRETS: Record<AccountProvider, SecretKey[]> = {
   anthropic_api: ['anthropic_admin_key'],
   openai_api: ['openai_admin_key'],
 };
+
+/**
+ * ¿Le falta algo a una cuenta adicional para poder consultarse? Se mira su
+ * secreto scoped (`<secreto>@<id>`), que solo aparece en el mapa cuando el
+ * backend enumera la cuenta ya persistida.
+ */
+export function accountReady(a: Account, s: SecretStatus): boolean {
+  const has = (k: SecretKey) => !!s[secretKey(k, a.id)];
+  switch (a.provider) {
+    case 'cursor':
+      return has('cursor_token');
+    case 'copilot':
+      return has('github_token') && a.username.trim() !== '';
+    case 'nan':
+      return has('nan_session') || has('nan_api_key');
+    case 'openrouter':
+      return has('openrouter_api_key');
+    case 'anthropic_api':
+      return has('anthropic_admin_key');
+    case 'openai_api':
+      return has('openai_admin_key');
+    default:
+      return true;
+  }
+}

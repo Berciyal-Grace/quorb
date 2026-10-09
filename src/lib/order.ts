@@ -1,5 +1,7 @@
 // Orden y visibilidad de los círculos de la tira.
 
+import { providerOf } from './accounts';
+
 /** Ordena por `order` (ids); los que no estén van al final en su orden original. */
 export function applyOrder<T extends { id: string }>(items: T[], order: string[]): T[] {
   const pos = new Map(order.map((id, i) => [id, i]));
@@ -33,3 +35,6 @@ export const OFFICIAL_USAGE_URL: Record<string, string> = {
   copilot: 'https://github.com/settings/billing/premium_requests_usage',
   openrouter: 'https://openrouter.ai/activity',
 };
+
+/** URL de uso oficial de un informe; normaliza el id para las cuentas adicionales (`openrouter:abc`). */
+export const officialUsageUrl = (reportId: string): string | undefined => OFFICIAL_USAGE_URL[providerOf(reportId)];

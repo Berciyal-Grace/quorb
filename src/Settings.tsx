@@ -6,11 +6,11 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { getVersion } from '@tauri-apps/api/app';
 import { api } from './lib/api';
 import { ORB_SIZE, type Account, type AccountProvider, type AlertMoment, type AppConfig, type Effect, type MediaSize, type ScopedSecretKey, type SecretKey, type SecretStatus } from './lib/types';
-import { ACCOUNT_SECRETS, SESSION_DIR, accountsOf, defaultSessionDir, newAccount, secretKey } from './lib/accounts';
+import { ACCOUNT_SECRETS, SESSION_DIR, accountReady, accountsOf, defaultSessionDir, newAccount, secretKey } from './lib/accounts';
 import { ACCENT_PRESETS, DEFAULT_ACCENT, derivePalette, normalizeHex } from './lib/palette';
 import { isDirty, isSettingsDirty, liveSaveConfig, reconcileSaved } from './lib/settings-dirty';
 import { createAutostartController } from './lib/autostart-controller';
-import { runMixedSave, mixedSaveMessage } from './lib/settings-save';
+import { runMixedSave, mixedSaveMessage, reloadSecretsAfterSave } from './lib/settings-save';
 import { comboFromEvent, prettyCombo } from './lib/shortcuts';
 import { ProviderLogo } from './components/ProviderLogo';
 import quorbLogo from './assets/quorb-logo.png';
@@ -464,27 +464,6 @@ const numOrNull = (s: string) => {
 };
 const strOrNull = (s: string) => (s.trim() === '' ? null : s);
 
-/** ¿Le falta algo a una cuenta adicional para poder consultarse? */
-function accountReady(a: Account, s: SecretStatus): boolean {
-  const has = (k: SecretKey) => !!s[secretKey(k, a.id)];
-  switch (a.provider) {
-    case 'cursor':
-      return has('cursor_token');
-    case 'copilot':
-      return has('github_token') && a.username.trim() !== '';
-    case 'nan':
-      return has('nan_session') || has('nan_api_key');
-    case 'openrouter':
-      return has('openrouter_api_key');
-    case 'anthropic_api':
-      return has('anthropic_admin_key');
-    case 'openai_api':
-      return has('openai_admin_key');
-    default:
-      return true;
-  }
-}
-
 /** Configuración de una cuenta adicional: nombre, si se muestra y cómo se conecta. */
 function AccountEditor({
   account: a,
@@ -932,9 +911,15 @@ export function Settings() {
         // No descartes ediciones hechas mientras se guardaba: adopta lo canónico
         // del backend salvo en los campos que el usuario tocó después.
         setCfg((latest) => (latest ? reconcileSaved(snapshot, savedCfg, latest) : savedCfg));
-        const errors = await api.shortcutErrors().catch(() => []);
+        const [errors, status] = await Promise.all([
+          api.shortcutErrors().catch(() => []),
+          // secret_status solo enumera cuentas persistidas: sin releerlo, una key
+          // guardada antes de crear la cuenta deja el proveedor en «Falta conectar».
+          reloadSecretsAfterSave(result.config, () => api.secretStatus()).catch(() => null),
+        ]);
         if (!aliveRef.current) return;
         setShortcutErrors(errors);
+        if (status) setSecrets(status);
       }
       // Mensaje explícito por parte: nunca un «Guardado ✓» conjunto falso.
       message = mixedSaveMessage(result);

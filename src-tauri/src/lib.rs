@@ -98,11 +98,25 @@ fn get_config(state: State<'_, AppState>) -> AppConfig {
     state.config.lock().unwrap().clone()
 }
 
+/// Sustituye la config bajo el lock y la persiste en el mismo paso, para que
+/// `save_config` y `patch_config` no se pisen a medias (merge atómico).
+/// Devuelve (anterior, nueva). Los efectos secundarios van fuera del lock.
+fn update_config(
+    state: &AppState,
+    mutate: impl FnOnce(&mut AppConfig),
+) -> Result<(AppConfig, AppConfig), String> {
+    let mut guard = state.config.lock().unwrap();
+    let mut next = guard.clone();
+    mutate(&mut next);
+    let next = next.sanitized();
+    config::save(&state.config_path, &next)?;
+    let old = std::mem::replace(&mut *guard, next.clone());
+    Ok((old, next))
+}
+
 #[tauri::command]
 fn save_config(app: AppHandle, state: State<'_, AppState>, config: AppConfig) -> Result<AppConfig, String> {
-    let config = config.sanitized();
-    config::save(&state.config_path, &config)?;
-    let old = std::mem::replace(&mut *state.config.lock().unwrap(), config.clone());
+    let (old, config) = update_config(&state, |current| *current = config)?;
     // Las cuentas eliminadas se llevan sus secretos del almacén del sistema.
     for gone in old.accounts.iter().filter(|a| !config.accounts.iter().any(|b| b.id == a.id)) {
         secrets::forget_account(gone);
@@ -116,6 +130,15 @@ fn save_config(app: AppHandle, state: State<'_, AppState>, config: AppConfig) ->
             let _ = w.set_always_on_top(config.always_on_top);
         }
     }
+    let _ = app.emit("config-changed", &config);
+    Ok(config)
+}
+
+/// Merge atómico de los campos del widget sobre la config actual: nunca toca
+/// cuentas ni secretos, así un snapshot obsoleto no puede borrar una cuenta.
+#[tauri::command]
+fn patch_config(app: AppHandle, state: State<'_, AppState>, patch: config::WidgetPatch) -> Result<AppConfig, String> {
+    let (_old, config) = update_config(&state, |current| current.apply_widget_patch(patch))?;
     let _ = app.emit("config-changed", &config);
     Ok(config)
 }
@@ -489,6 +512,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_config,
             save_config,
+            patch_config,
             secret_status,
             set_secret,
             fetch_usage,

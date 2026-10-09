@@ -1,9 +1,20 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { AlertMoment, AppConfig, Effect, Sample, ScopedSecretKey, SecretStatus, UsageReport } from './types';
 
+/** Campos que el widget puede cambiar sin arrastrar el resto de la config. */
+export interface WidgetPatch {
+  dockEdge?: AppConfig['dockEdge'];
+  dockOffset?: number;
+  dockMonitor?: string | null;
+  providerOrder?: string[];
+  hiddenProviders?: string[];
+}
+
 export const api = {
   getConfig: () => invoke<AppConfig>('get_config'),
   saveConfig: (config: AppConfig) => invoke<AppConfig>('save_config', { config }),
+  /** Merge atómico de los campos del widget: no toca cuentas ni secretos. */
+  patchConfig: (patch: WidgetPatch) => invoke<AppConfig>('patch_config', { patch }),
   secretStatus: () => invoke<SecretStatus>('secret_status'),
   setSecret: (key: ScopedSecretKey, value: string) => invoke<void>('set_secret', { key, value }),
   fetchUsage: () => invoke<UsageReport[]>('fetch_usage'),
