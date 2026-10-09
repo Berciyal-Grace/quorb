@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
@@ -29,12 +29,28 @@ const LINKS = {
   web: 'https://egdev.es',
 };
 
+/** Dentro del panel lateral de un proveedor, las secciones no repiten su tarjeta: el título va en la cabecera del panel. */
+const InDrawer = createContext(false);
+
 function Section({ title, kicker, id, children }: { title: string; kicker?: string; id?: string; children: ReactNode }) {
+  const inDrawer = useContext(InDrawer);
+  if (inDrawer) {
+    return (
+      <div className="q-drawer__section" id={id}>
+        {kicker && <p className="eg-eyebrow">{kicker}</p>}
+        {children}
+      </div>
+    );
+  }
   return (
-    <section className="q-section" id={id} aria-label={title}>
-      {kicker && <p className="eg-eyebrow">{kicker}</p>}
-      <h2>{title}</h2>
-      {children}
+    <section className="eg-module-card eg-module-card--banded q-section" id={id} aria-label={title}>
+      <div className="eg-module-card__head">
+        <div className="q-section__titles">
+          {kicker && <p className="eg-eyebrow">{kicker}</p>}
+          <h2>{title}</h2>
+        </div>
+      </div>
+      <div className="eg-module-card__body">{children}</div>
     </section>
   );
 }
@@ -546,9 +562,52 @@ export function Settings() {
   const [saved, setSaved] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<ProviderTab>(loadTab);
+  // Menú lateral contraíble: solo iconos, recordado en este equipo.
+  const [navCollapsed, setNavCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('settingsNavCollapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleNav = () =>
+    setNavCollapsed((v) => {
+      try {
+        localStorage.setItem('settingsNavCollapsed', v ? '0' : '1');
+      } catch {
+        /* sin almacenamiento */
+      }
+      return !v;
+    });
+  // Panel lateral con la configuración del proveedor: entra de derecha a izquierda.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerClose = useRef<HTMLButtonElement>(null);
+  const drawerOpener = useRef<HTMLElement | null>(null);
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    drawerOpener.current?.focus();
+  };
+  useEffect(() => {
+    if (!drawerOpen) return;
+    // El foco entra en el panel cuando ha empezado a deslizarse; Esc lo cierra.
+    const t = window.setTimeout(() => drawerClose.current?.focus({ preventScroll: true }), 60);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setDrawerOpen(false);
+        drawerOpener.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [drawerOpen]);
   const selectTab = (t: ProviderTab) => {
+    drawerOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setTab(t);
-    window.setTimeout(() => document.getElementById('provider-config')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+    setDrawerOpen(true);
     try {
       localStorage.setItem('settingsTab', t);
     } catch {
@@ -556,6 +615,9 @@ export function Settings() {
     }
   };
   const [section, setSection] = useState<PageId>(loadSection);
+  useEffect(() => {
+    if (section !== 'providers') setDrawerOpen(false);
+  }, [section]);
   const selectSection = (p: PageId) => {
     setSection(p);
     try {
@@ -727,7 +789,7 @@ export function Settings() {
     const st = providerState(t.id, cfg, secrets);
     const badge = PROVIDER_BADGE[st];
     return (
-      <article key={t.id} className="eg-module-card q-provider" aria-current={tab === t.id}>
+      <article key={t.id} className="eg-module-card q-provider" aria-current={drawerOpen && tab === t.id}>
         <div className="eg-module-card__head">
           <span className="q-provider__logo logo">
             <ProviderLogo id={t.id} name={t.name} />
@@ -737,7 +799,7 @@ export function Settings() {
         </div>
         <span className="q-provider__desc">{t.desc}</span>
         <div className="eg-module-card__actions">
-          <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" aria-expanded={tab === t.id} onClick={() => selectTab(t.id)}>
+          <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" aria-haspopup="dialog" aria-expanded={drawerOpen && tab === t.id} onClick={() => selectTab(t.id)}>
             {st === 'warn' ? 'Conectar' : 'Configurar'}
           </button>
         </div>
@@ -746,11 +808,11 @@ export function Settings() {
   };
 
   return (
-    <div className="q-settings">
+    <div className="q-settings" data-nav-collapsed={navCollapsed || undefined}>
       <aside className="q-settings__nav" aria-label="Quorb">
         <div className="q-brand">
           <img className="q-brand__logo" src={quorbLogo} alt="" aria-hidden="true" />
-          <span>
+          <span className="q-brand__text">
             <span className="q-brand__name">Quorb</span>
             <span className="q-brand__ver">Ajustes</span>
           </span>
@@ -759,7 +821,14 @@ export function Settings() {
           <ul className="eg-menu eg-menu--nav">
             {PAGES.map((p) => (
               <li key={p.id}>
-                <button type="button" className="eg-menu__item" aria-current={section === p.id ? 'page' : undefined} onClick={() => selectSection(p.id)}>
+                <button
+                  type="button"
+                  className="eg-menu__item"
+                  aria-current={section === p.id ? 'page' : undefined}
+                  aria-label={navCollapsed ? p.label : undefined}
+                  title={navCollapsed ? p.label : undefined}
+                  onClick={() => selectSection(p.id)}
+                >
                   <svg className="eg-icon" viewBox="0 0 24 24" aria-hidden="true">
                     <path d={p.icon} />
                   </svg>
@@ -773,6 +842,20 @@ export function Settings() {
             ))}
           </ul>
         </nav>
+        <button
+          type="button"
+          className="eg-menu__item q-nav-toggle"
+          aria-expanded={!navCollapsed}
+          aria-label={navCollapsed ? 'Expandir el menú' : 'Contraer el menú'}
+          title={navCollapsed ? 'Expandir el menú' : 'Contraer el menú'}
+          onClick={toggleNav}
+        >
+          <svg className="eg-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 4h18v16H3zM9 4v16" />
+            <path d={navCollapsed ? 'm13 10 2 2-2 2' : 'm15 10-2 2 2 2'} />
+          </svg>
+          <span className="eg-menu__label">Contraer</span>
+        </button>
       </aside>
 
       <main className="q-settings__main">
@@ -812,20 +895,59 @@ export function Settings() {
 
           {section === 'providers' && (
             <>
-              <section className="q-section" aria-label="Proveedores">
-                <div className="q-inline">
-                  <h2 style={{ margin: 0, font: '800 22px/1.1 var(--font-display)', textTransform: 'uppercase' }}>Proveedores</h2>
-                  <Field label="Consultar cada (min)">
-                    <input type="number" min={1} max={120} style={{ width: 110 }} value={cfg.refreshMinutes} onChange={(e) => set('refreshMinutes', Number(e.target.value) || 1)} />
-                  </Field>
+              <section className="eg-module-card eg-module-card--banded q-section" aria-label="Proveedores">
+                <div className="eg-module-card__head">
+                  <div className="q-section__titles">
+                    <h2>Proveedores</h2>
+                  </div>
+                  <label className="q-section__aside">
+                    Consultar cada
+                    <input type="number" min={1} max={120} value={cfg.refreshMinutes} onChange={(e) => set('refreshMinutes', Number(e.target.value) || 1)} />
+                    min
+                  </label>
                 </div>
+                <div className="eg-module-card__body">
                 <p className="eg-eyebrow">Suscripciones</p>
                 <div className="q-providers">{PROVIDER_TABS.filter((t) => t.group === 'sub').map(providerCard)}</div>
                 <p className="eg-eyebrow">APIs y créditos</p>
                 <div className="q-providers">{PROVIDER_TABS.filter((t) => t.group === 'api').map(providerCard)}</div>
                 <small className="eg-field__hint">Para cambiar el orden de los anillos, arrástralos en la tira.</small>
+                </div>
               </section>
-              <div id="provider-config" role="region" aria-label="Configuración del proveedor">
+              <div className="q-drawer-scrim" data-open={drawerOpen || undefined} onClick={closeDrawer} aria-hidden="true" />
+              <aside
+                className="q-drawer"
+                data-open={drawerOpen || undefined}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="q-drawer-title"
+                aria-hidden={!drawerOpen}
+                inert={!drawerOpen}
+              >
+                {(() => {
+                  const current = PROVIDER_TABS.find((t) => t.id === tab) ?? PROVIDER_TABS[0];
+                  const badge = PROVIDER_BADGE[providerState(current.id, cfg, secrets)];
+                  return (
+                    <header className="q-drawer__head">
+                      <span className="q-drawer__logo logo">
+                        <ProviderLogo id={current.id} name={current.name} />
+                      </span>
+                      <div className="q-drawer__titles">
+                        <p className="eg-eyebrow">Configuración</p>
+                        <h2 id="q-drawer-title">{current.name}</h2>
+                      </div>
+                      <span className={`eg-status eg-status--${badge.tone}`}>{badge.label}</span>
+                      <button ref={drawerClose} type="button" className="eg-icon-btn" aria-label="Cerrar la configuración" onClick={closeDrawer}>
+                        <svg className="eg-icon" viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M18 6 6 18M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </header>
+                  );
+                })()}
+                <div className="q-drawer__body" key={tab}>
+                  <InDrawer.Provider value={true}>
+
       {tab === 'claude' && (
         <Section kicker="Suscripción · OAuth" title="Claude (Pro / Max)">
           <Toggle label="Mostrar en el widget" checked={cfg.claude.enabled} onChange={(v) => set('claude', { enabled: v })} />
@@ -1074,7 +1196,18 @@ export function Settings() {
           </Field>
         </Section>
       )}
-              </div>
+                  </InDrawer.Provider>
+                </div>
+                <footer className="q-drawer__foot">
+                  <span className="q-foot__msg" role="status">{saved}</span>
+                  <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={closeDrawer}>
+                    Listo
+                  </button>
+                  <button type="button" className="eg-btn eg-btn--primary eg-btn--sm" onClick={save} disabled={!dirty || saving}>
+                    {saving ? 'Guardando…' : 'Guardar cambios'}
+                  </button>
+                </footer>
+              </aside>
             </>
           )}
 

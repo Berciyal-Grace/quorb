@@ -20,6 +20,8 @@ use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder
 
 const WIDGET: &str = "widget";
 const SETTINGS: &str = "settings";
+/// Escala de la ventana de Ajustes (1.0 = 100 %).
+const SETTINGS_ZOOM: f64 = 0.85;
 const OVERLAY: &str = "overlay";
 const DETAIL: &str = "detail";
 const TRAY_ID: &str = "main";
@@ -272,12 +274,15 @@ fn show_settings(app: &AppHandle) -> tauri::Result<()> {
         w.unminimize()?;
         return w.set_focus();
     }
-    WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App("index.html".into()))
+    let win = WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App("index.html".into()))
         .title("Ajustes · Quorb")
         .inner_size(1040.0, 760.0)
         .min_inner_size(480.0, 520.0)
         .center()
         .build()?;
+    // Ajustes se ve a escala 85 % (como el zoom del navegador): textos, tarjetas y
+    // controles más compactos sin tocar el CSS, y cabe más contenido en la ventana.
+    let _ = win.set_zoom(SETTINGS_ZOOM);
     Ok(())
 }
 
