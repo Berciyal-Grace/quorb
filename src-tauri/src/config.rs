@@ -60,6 +60,82 @@ pub struct AppConfig {
     pub anthropic_api: ApiCostConfig,
     pub openai_api: ApiCostConfig,
     pub nan: NanConfig,
+    /// Cuentas adicionales de un proveedor (la principal es la de arriba).
+    pub accounts: Vec<Account>,
+}
+
+/// Proveedores que admiten cuentas adicionales (todos).
+pub const ACCOUNT_PROVIDERS: [&str; 9] =
+    ["claude", "codex", "gemini", "cursor", "copilot", "nan", "openrouter", "anthropic_api", "openai_api"];
+
+/// `<proveedor>:<sufijo>`, con sufijo de 1–32 caracteres `[a-z0-9-]`.
+pub fn is_account_id(id: &str) -> bool {
+    match id.split_once(':') {
+        Some((provider, suffix)) => {
+            ACCOUNT_PROVIDERS.contains(&provider)
+                && (1..=32).contains(&suffix.len())
+                && suffix.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        }
+        None => false,
+    }
+}
+
+/// Cuenta adicional de un proveedor. Su `id` es estable: el historial, el orden
+/// de la tira y sus secretos (`<secreto>@<id>`) cuelgan de él.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Account {
+    pub id: String,
+    pub provider: String,
+    /// Nombre que se ve en la tira: «Claude · Trabajo».
+    pub label: String,
+    pub enabled: bool,
+    /// Claude, Codex y Gemini: carpeta de sesión propia del CLI
+    /// (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME`). `None` = la de Quorb.
+    pub config_dir: Option<String>,
+    /// Copilot: usuario de GitHub.
+    pub username: String,
+    /// Copilot (`pro`, `custom`…) o NaN (`member`…).
+    pub plan: String,
+    /// Copilot con plan `custom`.
+    pub custom_allowance: Option<u32>,
+    /// Anthropic / OpenAI API.
+    pub monthly_budget_usd: Option<f64>,
+}
+
+impl Account {
+    pub fn suffix(&self) -> &str {
+        self.id.split_once(':').map(|(_, s)| s).unwrap_or(&self.id)
+    }
+
+    /// Carpeta de sesión del CLI: la elegida o `~/.quorb/accounts/<proveedor>-<sufijo>`.
+    pub fn session_dir(&self, home: &Path) -> std::path::PathBuf {
+        match self.config_dir.as_deref() {
+            Some(d) => std::path::PathBuf::from(d),
+            None => home.join(".quorb").join("accounts").join(format!("{}-{}", self.provider, self.suffix())),
+        }
+    }
+
+    /// Variable de entorno con la que el CLI oficial usa esa carpeta.
+    pub fn session_env(&self) -> Option<&'static str> {
+        match self.provider.as_str() {
+            "claude" => Some("CLAUDE_CONFIG_DIR"),
+            "codex" => Some("CODEX_HOME"),
+            "gemini" => Some("GEMINI_CLI_HOME"),
+            _ => None,
+        }
+    }
+
+    /// Fichero de sesión que deja el CLI dentro de su carpeta.
+    pub fn credentials_file(&self, home: &Path) -> Option<std::path::PathBuf> {
+        let dir = self.session_dir(home);
+        match self.provider.as_str() {
+            "claude" => Some(dir.join(".credentials.json")),
+            "codex" => Some(dir.join("auth.json")),
+            "gemini" => Some(dir.join(".gemini").join("oauth_creds.json")),
+            _ => None,
+        }
+    }
 }
 
 impl Default for AppConfig {
@@ -105,6 +181,7 @@ impl Default for AppConfig {
             anthropic_api: ApiCostConfig::default(),
             openai_api: ApiCostConfig::default(),
             nan: NanConfig::default(),
+            accounts: vec![],
         }
     }
 }
@@ -317,6 +394,18 @@ impl AppConfig {
         for sc in [&mut self.shortcuts.toggle, &mut self.shortcuts.open_peak, &mut self.shortcuts.refresh] {
             *sc = sc.trim().to_string();
         }
+        let mut ids = std::collections::HashSet::new();
+        self.accounts.retain(|a| is_account_id(&a.id) && a.id.starts_with(&format!("{}:", a.provider)) && ids.insert(a.id.clone()));
+        for (i, a) in self.accounts.iter_mut().enumerate() {
+            a.label = a.label.trim().to_string();
+            if a.label.is_empty() {
+                a.label = format!("Cuenta {}", i + 2);
+            }
+            if a.config_dir.as_deref().map(str::trim).unwrap_or("").is_empty() {
+                a.config_dir = None;
+            }
+            a.username = a.username.trim().trim_start_matches('@').to_string();
+        }
         for list in [&mut self.provider_order, &mut self.hidden_providers] {
             let mut seen = std::collections::HashSet::new();
             list.retain(|id| seen.insert(id.clone()));
@@ -407,6 +496,38 @@ mod tests {
         let bad: AppConfig = serde_json::from_str(r##"{"accentColor": "rojo"}"##).unwrap();
         assert_eq!(ok.sanitized().accent_color, "#00ff00");
         assert_eq!(bad.sanitized().accent_color, ACCENT_DEFAULT);
+    }
+
+    #[test]
+    fn accounts_are_sanitized() {
+        let cfg: AppConfig = serde_json::from_str(
+            r#"{"accounts": [
+                {"id": "claude:trabajo", "provider": "claude", "label": "  ", "configDir": " "},
+                {"id": "claude:trabajo", "provider": "claude"},
+                {"id": "codex:x", "provider": "claude"},
+                {"id": "foo:x", "provider": "foo"},
+                {"id": "copilot:Mal", "provider": "copilot"},
+                {"id": "copilot:b2", "provider": "copilot", "username": " @otra ", "label": "Otra"}
+            ]}"#,
+        )
+        .unwrap();
+        let a = cfg.sanitized().accounts;
+        assert_eq!(a.len(), 2);
+        assert_eq!((a[0].label.as_str(), a[0].config_dir.clone()), ("Cuenta 2", None));
+        assert_eq!((a[1].label.as_str(), a[1].username.as_str()), ("Otra", "otra"));
+    }
+
+    #[test]
+    fn account_session_files() {
+        let home = Path::new("/h");
+        let mut a = Account { id: "gemini:w1".into(), provider: "gemini".into(), ..Default::default() };
+        assert_eq!(a.credentials_file(home).unwrap(), Path::new("/h/.quorb/accounts/gemini-w1/.gemini/oauth_creds.json"));
+        assert_eq!(a.session_env(), Some("GEMINI_CLI_HOME"));
+        a.provider = "claude".into();
+        a.config_dir = Some("/w/.claude-work".into());
+        assert_eq!(a.credentials_file(home).unwrap(), Path::new("/w/.claude-work/.credentials.json"));
+        a.provider = "openrouter".into();
+        assert_eq!(a.credentials_file(home), None);
     }
 
     #[test]

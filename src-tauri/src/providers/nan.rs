@@ -12,7 +12,7 @@
 //! parser es tolerante: busca objetos con modelo + tokens (y fecha si la hay).
 //! `nan_probe` (comando Tauri) devuelve la respuesta en crudo para ajustarlo.
 
-use super::{month_start, net_error, next_month_start};
+use super::{month_start, net_error, next_month_start, Who};
 use crate::config::NanConfig;
 use crate::model::{Kind, Meter, Status, UsageReport};
 use crate::secrets;
@@ -53,13 +53,13 @@ impl UsageSummary {
     }
 }
 
-pub async fn fetch(cfg: &NanConfig, http: &reqwest::Client) -> UsageReport {
-    let mut report = UsageReport::new("nan", "NaN Builders", Kind::Subscription);
+pub async fn fetch(cfg: &NanConfig, who: Who<'_>, http: &reqwest::Client) -> UsageReport {
+    let mut report = who.report("NaN Builders", Kind::Subscription);
     report.plan = Some(plan_name(&cfg.plan).into());
 
     // A. Sesión de NaN Cloud: los mismos datos que el dashboard (preferente).
     let mut note: Option<String> = None;
-    if let Some(cookie) = secrets::get(secrets::NAN_SESSION) {
+    if let Some(cookie) = who.secret(secrets::NAN_SESSION) {
         match super::nan_cloud::fetch(http, &cookie).await {
             Ok(u) => {
                 report.meters = u.meters;
@@ -87,7 +87,7 @@ pub async fn fetch(cfg: &NanConfig, http: &reqwest::Client) -> UsageReport {
     }
 
     // B. API key: /v1/usage + cuotas publicadas.
-    let Some(key) = secrets::get(secrets::NAN_API_KEY) else {
+    let Some(key) = who.secret(secrets::NAN_API_KEY) else {
         let mut r = report.fail(
             if note.is_some() { Status::NeedsLogin } else { Status::Unconfigured },
             note.unwrap_or_else(|| "Conecta tu cuenta de NaN (enlace por correo) o añade tu API key en Ajustes.".into()),

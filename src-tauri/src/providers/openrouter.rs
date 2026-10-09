@@ -3,7 +3,7 @@
 //!   · `GET https://openrouter.ai/api/v1/credits` → saldo comprado y gastado de la cuenta
 //! Docs: https://openrouter.ai/docs/api-reference/limits
 
-use super::{month_window, net_error};
+use super::{month_window, net_error, Who};
 use crate::config::OpenRouterConfig;
 use crate::model::{Kind, Meter, Spend, Status, UsageReport};
 use crate::secrets;
@@ -11,9 +11,9 @@ use serde_json::Value;
 
 const API: &str = "https://openrouter.ai/api/v1";
 
-pub async fn fetch(_cfg: &OpenRouterConfig, http: &reqwest::Client) -> UsageReport {
-    let report = UsageReport::new("openrouter", "OpenRouter", Kind::Api);
-    let Some(key) = secrets::get(secrets::OPENROUTER_API_KEY) else {
+pub async fn fetch(_cfg: &OpenRouterConfig, who: Who<'_>, http: &reqwest::Client) -> UsageReport {
+    let report = who.report("OpenRouter", Kind::Api);
+    let Some(key) = who.secret(secrets::OPENROUTER_API_KEY) else {
         return report.fail(Status::Unconfigured, "Añade tu API key de OpenRouter en Ajustes.");
     };
 

@@ -4,7 +4,7 @@
 //! La API devuelve lo consumido; la cuota incluida depende del plan (Ajustes).
 //! Docs: https://docs.github.com/en/rest/billing/usage
 
-use super::{month_window, net_error};
+use super::{month_window, net_error, Who};
 use crate::config::CopilotConfig;
 use crate::model::{Kind, Meter, Spend, Status, UsageReport};
 use crate::secrets;
@@ -23,11 +23,11 @@ pub(crate) fn plan_allowance(plan: &str) -> (Option<f64>, &'static str) {
     }
 }
 
-pub async fn fetch(cfg: &CopilotConfig, http: &reqwest::Client) -> UsageReport {
-    let mut report = UsageReport::new("copilot", "GitHub Copilot", Kind::Subscription);
+pub async fn fetch(cfg: &CopilotConfig, who: Who<'_>, http: &reqwest::Client) -> UsageReport {
+    let mut report = who.report("GitHub Copilot", Kind::Subscription);
     let (default_allowance, plan_label) = plan_allowance(&cfg.plan);
     report.plan = Some(plan_label.into());
-    let Some(token) = secrets::get(secrets::GITHUB_TOKEN) else {
+    let Some(token) = who.secret(secrets::GITHUB_TOKEN) else {
         return report.fail(Status::Unconfigured, "Añade un token de GitHub (fine-grained, permiso «Plan»: lectura) en Ajustes.");
     };
     let user = cfg.username.trim();

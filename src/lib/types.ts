@@ -124,6 +124,37 @@ export interface AppConfig {
   anthropicApi: ApiCostConfig;
   openaiApi: ApiCostConfig;
   nan: NanConfig;
+  /** Cuentas adicionales de un proveedor (la principal es la de su campo) */
+  accounts: Account[];
+}
+
+export type AccountProvider =
+  | 'claude'
+  | 'codex'
+  | 'gemini'
+  | 'cursor'
+  | 'copilot'
+  | 'nan'
+  | 'openrouter'
+  | 'anthropic_api'
+  | 'openai_api';
+
+/** Cuenta adicional (config.rs › Account). `id` = `<proveedor>:<sufijo>` */
+export interface Account {
+  id: string;
+  provider: AccountProvider;
+  /** Nombre en la tira: «Claude · Trabajo» */
+  label: string;
+  enabled: boolean;
+  /** Claude, Codex y Gemini: carpeta de sesión del CLI; null = la de Quorb */
+  configDir: string | null;
+  /** Copilot */
+  username: string;
+  /** Copilot o NaN */
+  plan: string;
+  customAllowance: number | null;
+  /** Anthropic / OpenAI API */
+  monthlyBudgetUsd: number | null;
 }
 
 export type SecretKey =
@@ -134,7 +165,9 @@ export type SecretKey =
   | 'openrouter_api_key'
   | 'github_token'
   | 'cursor_token';
-export type SecretStatus = Partial<Record<SecretKey, boolean>>;
+/** Secreto de la cuenta principal o de una adicional (`<secreto>@<id de cuenta>`) */
+export type ScopedSecretKey = SecretKey | `${SecretKey}@${string}`;
+export type SecretStatus = Partial<Record<ScopedSecretKey, boolean>>;
 
 /** Límites del tamaño de los círculos (iguales que en config.rs). */
 export const ORB_SIZE = { min: 32, max: 80, default: 48 } as const;

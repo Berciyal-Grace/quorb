@@ -12,43 +12,131 @@ pub mod nan_cloud;
 pub mod openai_api;
 pub mod openrouter;
 
-use crate::config::AppConfig;
-use crate::model::UsageReport;
+use crate::config::{Account, ApiCostConfig, AppConfig, CopilotConfig, NanConfig, OpenRouterConfig, SubscriptionConfig};
+use crate::model::{Kind, UsageReport};
+use crate::secrets;
 use chrono::{DateTime, Datelike, TimeZone, Utc};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::path::{Path, PathBuf};
 
+/// Cuenta que se consulta: la principal de un proveedor (id = proveedor, secretos
+/// sin sufijo) o una adicional (id `<proveedor>:<sufijo>`, secretos `<secreto>@<id>`).
+#[derive(Clone, Copy, Debug)]
+pub struct Who<'a> {
+    pub id: &'a str,
+    pub label: Option<&'a str>,
+}
+
+impl<'a> Who<'a> {
+    pub fn main(id: &'a str) -> Self {
+        Self { id, label: None }
+    }
+
+    pub fn extra(a: &'a Account) -> Self {
+        Self { id: &a.id, label: Some(&a.label) }
+    }
+
+    pub fn is_main(&self) -> bool {
+        self.label.is_none()
+    }
+
+    /// Informe con el id de la cuenta y su nombre («Claude · Trabajo»).
+    pub fn report(&self, name: &str, kind: Kind) -> UsageReport {
+        match self.label {
+            None => UsageReport::new(self.id, name, kind),
+            Some(l) => UsageReport::new(self.id, &format!("{name} · {l}"), kind),
+        }
+    }
+
+    pub fn secret(&self, key: &str) -> Option<String> {
+        if self.is_main() {
+            secrets::get(key)
+        } else {
+            secrets::get(&secrets::scoped(key, self.id))
+        }
+    }
+}
+
 pub async fn fetch_all(cfg: &AppConfig, http: &reqwest::Client) -> Vec<UsageReport> {
     let mut jobs: Vec<BoxFuture<'_, UsageReport>> = vec![];
     if cfg.claude.enabled {
-        jobs.push(claude::fetch(&cfg.claude, http).boxed());
+        jobs.push(claude::fetch(&cfg.claude, Who::main("claude"), http).boxed());
     }
     if cfg.codex.enabled {
-        jobs.push(codex::fetch(&cfg.codex, http).boxed());
+        jobs.push(codex::fetch(&cfg.codex, Who::main("codex"), http).boxed());
     }
     if cfg.gemini.enabled {
-        jobs.push(gemini::fetch(&cfg.gemini, http).boxed());
+        jobs.push(gemini::fetch(&cfg.gemini, Who::main("gemini"), http).boxed());
     }
     if cfg.cursor.enabled {
-        jobs.push(cursor::fetch(&cfg.cursor, http).boxed());
+        jobs.push(cursor::fetch(&cfg.cursor, Who::main("cursor"), http).boxed());
     }
     if cfg.copilot.enabled {
-        jobs.push(copilot::fetch(&cfg.copilot, http).boxed());
+        jobs.push(copilot::fetch(&cfg.copilot, Who::main("copilot"), http).boxed());
     }
     if cfg.nan.enabled {
-        jobs.push(nan::fetch(&cfg.nan, http).boxed());
+        jobs.push(nan::fetch(&cfg.nan, Who::main("nan"), http).boxed());
     }
     if cfg.openrouter.enabled {
-        jobs.push(openrouter::fetch(&cfg.openrouter, http).boxed());
+        jobs.push(openrouter::fetch(&cfg.openrouter, Who::main("openrouter"), http).boxed());
     }
     if cfg.anthropic_api.enabled {
-        jobs.push(anthropic_api::fetch(&cfg.anthropic_api, http).boxed());
+        jobs.push(anthropic_api::fetch(&cfg.anthropic_api, Who::main("anthropic_api"), http).boxed());
     }
     if cfg.openai_api.enabled {
-        jobs.push(openai_api::fetch(&cfg.openai_api, http).boxed());
+        jobs.push(openai_api::fetch(&cfg.openai_api, Who::main("openai_api"), http).boxed());
+    }
+    for a in cfg.accounts.iter().filter(|a| a.enabled) {
+        jobs.push(fetch_account(cfg, a, http));
     }
     futures::future::join_all(jobs).await
+}
+
+/// Consulta una cuenta adicional con la config de su proveedor adaptada a ella.
+fn fetch_account<'a>(cfg: &'a AppConfig, a: &'a Account, http: &'a reqwest::Client) -> BoxFuture<'a, UsageReport> {
+    let who = Who::extra(a);
+    let session = |main: &SubscriptionConfig| SubscriptionConfig {
+        enabled: true,
+        credentials_path: a.credentials_file(&home()).map(|p| p.to_string_lossy().into_owned()),
+        login_command: main.login_command.clone(),
+    };
+    match a.provider.as_str() {
+        "claude" => async move { claude::fetch(&session(&cfg.claude), who, http).await }.boxed(),
+        "codex" => async move { codex::fetch(&session(&cfg.codex), who, http).await }.boxed(),
+        "gemini" => async move { gemini::fetch(&session(&cfg.gemini), who, http).await }.boxed(),
+        // Solo con su token: la sesión de la app de Cursor es la de la cuenta principal.
+        "cursor" => async move { cursor::fetch(&SubscriptionConfig::default(), who, http).await }.boxed(),
+        "copilot" => {
+            let c = CopilotConfig {
+                enabled: true,
+                username: a.username.clone(),
+                plan: if a.plan.is_empty() { CopilotConfig::default().plan } else { a.plan.clone() },
+                custom_allowance: a.custom_allowance,
+            };
+            async move { copilot::fetch(&c, who, http).await }.boxed()
+        }
+        "nan" => {
+            let mut c: NanConfig = cfg.nan.clone();
+            if !a.plan.is_empty() {
+                c.plan = a.plan.clone();
+            }
+            async move { nan::fetch(&c, who, http).await }.boxed()
+        }
+        "openrouter" => async move { openrouter::fetch(&OpenRouterConfig { enabled: true }, who, http).await }.boxed(),
+        "anthropic_api" | "openai_api" => {
+            let c = ApiCostConfig { enabled: true, monthly_budget_usd: a.monthly_budget_usd };
+            if a.provider == "anthropic_api" {
+                async move { anthropic_api::fetch(&c, who, http).await }.boxed()
+            } else {
+                async move { openai_api::fetch(&c, who, http).await }.boxed()
+            }
+        }
+        other => {
+            let r = who.report(other, Kind::Subscription).fail(crate::model::Status::Error, format!("Proveedor desconocido: {other}"));
+            async move { r }.boxed()
+        }
+    }
 }
 
 /// Primer instante del mes actual (UTC).
@@ -100,7 +188,7 @@ pub(crate) fn read_json(path: &Path) -> Result<serde_json::Value, String> {
     serde_json::from_str(&raw).map_err(|e| format!("JSON inválido en {}: {e}", path.display()))
 }
 
-pub(crate) fn home() -> PathBuf {
+pub fn home() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
 }
 

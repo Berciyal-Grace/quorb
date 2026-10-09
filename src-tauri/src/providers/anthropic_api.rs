@@ -2,7 +2,7 @@
 //! Requiere una Admin API key (`sk-ant-admin...`), creada en Console > Settings > Admin keys.
 //! Docs: https://platform.claude.com/docs/en/manage-claude/usage-cost-api
 
-use super::{month_start, month_window, net_error};
+use super::{month_start, month_window, net_error, Who};
 use crate::config::ApiCostConfig;
 use crate::model::{Kind, Meter, Spend, Status, UsageReport};
 use crate::secrets;
@@ -10,9 +10,9 @@ use serde_json::Value;
 
 const URL: &str = "https://api.anthropic.com/v1/organizations/cost_report";
 
-pub async fn fetch(cfg: &ApiCostConfig, http: &reqwest::Client) -> UsageReport {
-    let report = UsageReport::new("anthropic_api", "Anthropic API", Kind::Api);
-    let Some(key) = secrets::get(secrets::ANTHROPIC_ADMIN_KEY) else {
+pub async fn fetch(cfg: &ApiCostConfig, who: Who<'_>, http: &reqwest::Client) -> UsageReport {
+    let report = who.report("Anthropic API", Kind::Api);
+    let Some(key) = who.secret(secrets::ANTHROPIC_ADMIN_KEY) else {
         return report.fail(Status::Unconfigured, "Añade una Admin API key de Anthropic en Ajustes.");
     };
 

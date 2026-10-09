@@ -1,11 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AlertMoment, AppConfig, Effect, Sample, SecretKey, SecretStatus, UsageReport } from './types';
+import type { AlertMoment, AppConfig, Effect, Sample, ScopedSecretKey, SecretStatus, UsageReport } from './types';
 
 export const api = {
   getConfig: () => invoke<AppConfig>('get_config'),
   saveConfig: (config: AppConfig) => invoke<AppConfig>('save_config', { config }),
   secretStatus: () => invoke<SecretStatus>('secret_status'),
-  setSecret: (key: SecretKey, value: string) => invoke<void>('set_secret', { key, value }),
+  setSecret: (key: ScopedSecretKey, value: string) => invoke<void>('set_secret', { key, value }),
   fetchUsage: () => invoke<UsageReport[]>('fetch_usage'),
   openLogin: (provider: string) => invoke<void>('open_login', { provider }),
   openSettings: () => invoke<void>('open_settings'),
@@ -14,8 +14,8 @@ export const api = {
   getHistory: (provider: string, hours: number) => invoke<Sample[]>('get_history', { provider, hours }),
   nanProbe: () => invoke<string>('nan_probe'),
   nanLoginRequest: (email: string) => invoke<void>('nan_login_request', { email }),
-  /** Devuelve el usuario conectado */
-  nanLoginComplete: (link: string) => invoke<string>('nan_login_complete', { link }),
+  /** Devuelve el usuario conectado. `account`: id de una cuenta adicional de NaN */
+  nanLoginComplete: (link: string, account?: string) => invoke<string>('nan_login_complete', { link, account: account ?? null }),
   /** Rectángulo del monitor en píxeles físicos */
   playEffect: (
     kind: Exclude<Effect, 'none'>,

@@ -5,7 +5,8 @@ import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { getVersion } from '@tauri-apps/api/app';
 import { api } from './lib/api';
-import { ORB_SIZE, type AlertMoment, type AppConfig, type Effect, type MediaSize, type SecretKey, type SecretStatus } from './lib/types';
+import { ORB_SIZE, type Account, type AccountProvider, type AlertMoment, type AppConfig, type Effect, type MediaSize, type ScopedSecretKey, type SecretKey, type SecretStatus } from './lib/types';
+import { ACCOUNT_SECRETS, SESSION_DIR, accountsOf, defaultSessionDir, newAccount, secretKey } from './lib/accounts';
 import { ACCENT_PRESETS, DEFAULT_ACCENT, derivePalette, normalizeHex } from './lib/palette';
 import { isDirty, isSettingsDirty, liveSaveConfig, reconcileSaved } from './lib/settings-dirty';
 import { createAutostartController } from './lib/autostart-controller';
@@ -161,7 +162,7 @@ function Link({ href, children }: { href: string; children: ReactNode }) {
   );
 }
 
-function SecretInput({ id, label, configured, onSaved, hint }: { id: SecretKey; label: string; configured: boolean; onSaved: () => void; hint?: ReactNode }) {
+function SecretInput({ id, label, configured, onSaved, hint }: { id: ScopedSecretKey; label: string; configured: boolean; onSaved: () => void; hint?: ReactNode }) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -206,7 +207,7 @@ function SecretInput({ id, label, configured, onSaved, hint }: { id: SecretKey; 
 }
 
 /** Conectar NaN Cloud como la CLI oficial: enlace de un solo uso enviado al correo. */
-function NanConnect({ connected, onChange }: { connected: boolean; onChange: () => void }) {
+function NanConnect({ connected, onChange, account }: { connected: boolean; onChange: () => void; account?: string }) {
   const [email, setEmail] = useState('');
   const [link, setLink] = useState('');
   const [step, setStep] = useState<'email' | 'link'>('email');
@@ -234,7 +235,7 @@ function NanConnect({ connected, onChange }: { connected: boolean; onChange: () 
           disabled={busy}
           onClick={() =>
             run(async () => {
-              await api.setSecret('nan_session', '');
+              await api.setSecret(account ? secretKey('nan_session', account) : 'nan_session', '');
               onChange();
             })
           }
@@ -273,7 +274,7 @@ function NanConnect({ connected, onChange }: { connected: boolean; onChange: () 
             disabled={busy || !link.trim()}
             onClick={() =>
               run(async () => {
-                const who = await api.nanLoginComplete(link);
+                const who = await api.nanLoginComplete(link, account);
                 setMsg(`Conectado como ${who}`);
                 setLink('');
                 onChange();
@@ -463,6 +464,167 @@ const numOrNull = (s: string) => {
 };
 const strOrNull = (s: string) => (s.trim() === '' ? null : s);
 
+/** ¿Le falta algo a una cuenta adicional para poder consultarse? */
+function accountReady(a: Account, s: SecretStatus): boolean {
+  const has = (k: SecretKey) => !!s[secretKey(k, a.id)];
+  switch (a.provider) {
+    case 'cursor':
+      return has('cursor_token');
+    case 'copilot':
+      return has('github_token') && a.username.trim() !== '';
+    case 'nan':
+      return has('nan_session') || has('nan_api_key');
+    case 'openrouter':
+      return has('openrouter_api_key');
+    case 'anthropic_api':
+      return has('anthropic_admin_key');
+    case 'openai_api':
+      return has('openai_admin_key');
+    default:
+      return true;
+  }
+}
+
+/** Configuración de una cuenta adicional: nombre, si se muestra y cómo se conecta. */
+function AccountEditor({
+  account: a,
+  persisted,
+  secrets,
+  onChange,
+  onRemove,
+  onSecrets,
+  onError,
+}: {
+  account: Account;
+  /** Ya está guardada tal cual en el backend (necesario para abrir su login). */
+  persisted: boolean;
+  secrets: SecretStatus;
+  onChange: (patch: Partial<Account>) => void;
+  onRemove: () => void;
+  onSecrets: () => void;
+  onError: (msg: string) => void;
+}) {
+  const key = (k: SecretKey) => secretKey(k, a.id);
+  const session = SESSION_DIR[a.provider];
+  return (
+    <Section kicker="Cuenta adicional" title={a.label}>
+      <div className="q-cols">
+        <Field label="Nombre" hint="Se ve en la tira junto al proveedor.">
+          <input type="text" value={a.label} onChange={(e) => onChange({ label: e.target.value })} />
+        </Field>
+      </div>
+      <Toggle label="Mostrar en el widget" checked={a.enabled} onChange={(v) => onChange({ enabled: v })} />
+
+      {session && (
+        <>
+          <p className="q-note">
+            Esta cuenta tiene su propia carpeta de sesión, así no toca la principal. «Iniciar sesión» abre el login oficial con{' '}
+            <code>{session.env}</code> apuntando a esa carpeta. Quorb no renueva el token: si sale caducada, vuelve a abrir el CLI con esa
+            variable.
+          </p>
+          <Field label="Carpeta de sesión" hint={<>Vacío = <code>{defaultSessionDir(a)}</code>. Puedes usar una que ya tengas. Quorb lee <code>{session.file}</code> dentro de ella.</>}>
+            <input type="text" spellCheck={false} value={a.configDir ?? ''} placeholder={defaultSessionDir(a)} onChange={(e) => onChange({ configDir: strOrNull(e.target.value) })} />
+          </Field>
+          <div className="q-inline">
+            <button className="eg-btn eg-btn--primary" disabled={!persisted} onClick={() => api.openLogin(a.id).catch((e) => onError(String(e)))}>
+              Iniciar sesión
+            </button>
+            {!persisted && <span className="q-note">Guarda los cambios para poder iniciar sesión.</span>}
+          </div>
+        </>
+      )}
+
+      {a.provider === 'cursor' && (
+        <SecretInput
+          id={key('cursor_token')}
+          label="Token de la cuenta"
+          configured={!!secrets[key('cursor_token')]}
+          onSaved={onSecrets}
+          hint="La app de Cursor guarda una sola sesión. Entra en cursor.com con esta cuenta y pega el valor de la cookie WorkosCursorSessionToken."
+        />
+      )}
+
+      {a.provider === 'copilot' && (
+        <>
+          <div className="q-cols">
+            <Field label="Usuario de GitHub">
+              <input type="text" spellCheck={false} value={a.username} onChange={(e) => onChange({ username: e.target.value })} />
+            </Field>
+            <Field label="Plan">
+              <select value={a.plan || 'pro'} onChange={(e) => onChange({ plan: e.target.value })}>
+                <option value="free">Free · 50</option>
+                <option value="pro">Pro · 300</option>
+                <option value="pro_plus">Pro+ · 1500</option>
+                <option value="business">Business · 300</option>
+                <option value="enterprise">Enterprise · 1000</option>
+                <option value="custom">Otra cantidad</option>
+              </select>
+            </Field>
+          </div>
+          {a.plan === 'custom' && (
+            <Field label="Peticiones premium incluidas al mes">
+              <input type="number" min={1} value={a.customAllowance ?? ''} onChange={(e) => onChange({ customAllowance: numOrNull(e.target.value) })} />
+            </Field>
+          )}
+          <SecretInput
+            id={key('github_token')}
+            label="Token de GitHub de esta cuenta (fine-grained)"
+            configured={!!secrets[key('github_token')]}
+            onSaved={onSecrets}
+            hint={<>Créalo con esta cuenta en <Link href={LINKS.githubToken}>GitHub › Fine-grained tokens</Link> con el permiso «Plan» (solo lectura).</>}
+          />
+        </>
+      )}
+
+      {a.provider === 'nan' && (
+        <>
+          <NanConnect account={a.id} connected={!!secrets[key('nan_session')]} onChange={onSecrets} />
+          <SecretInput id={key('nan_api_key')} label="API key (alternativa)" configured={!!secrets[key('nan_api_key')]} onSaved={onSecrets} />
+          <Field label="Plan" hint="La URL base y el resto de ajustes avanzados son los de la cuenta principal.">
+            <select value={a.plan || 'member'} onChange={(e) => onChange({ plan: e.target.value })}>
+              <option value="community">nan_community</option>
+              <option value="member">nan_member</option>
+              <option value="premium">GLM Premium</option>
+            </select>
+          </Field>
+        </>
+      )}
+
+      {a.provider === 'openrouter' && (
+        <SecretInput
+          id={key('openrouter_api_key')}
+          label="API key"
+          configured={!!secrets[key('openrouter_api_key')]}
+          onSaved={onSecrets}
+          hint={<>Puede ser de otra cuenta o de la misma con otro límite. <Link href={LINKS.openrouterKeys}>openrouter.ai › Keys</Link></>}
+        />
+      )}
+
+      {(a.provider === 'anthropic_api' || a.provider === 'openai_api') && (
+        <>
+          <SecretInput
+            id={key(a.provider === 'anthropic_api' ? 'anthropic_admin_key' : 'openai_admin_key')}
+            label="Admin key de esta organización"
+            configured={!!secrets[key(a.provider === 'anthropic_api' ? 'anthropic_admin_key' : 'openai_admin_key')]}
+            onSaved={onSecrets}
+            hint={<>Cada organización tiene su propia <Link href={a.provider === 'anthropic_api' ? LINKS.anthropicAdmin : LINKS.openaiAdmin}>Admin key</Link>.</>}
+          />
+          <Field label="Presupuesto mensual (USD, opcional)">
+            <input type="number" min={0} step="any" value={a.monthlyBudgetUsd ?? ''} onChange={(e) => onChange({ monthlyBudgetUsd: numOrNull(e.target.value) })} />
+          </Field>
+        </>
+      )}
+
+      <div className="q-inline">
+        <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={onRemove}>
+          Eliminar esta cuenta
+        </button>
+        <small className="eg-field__hint">Al guardar se borran también sus claves del Administrador de credenciales.</small>
+      </div>
+    </Section>
+  );
+}
+
 const PROVIDER_TABS = [
   { id: 'claude', name: 'Claude', group: 'sub', desc: 'Pro / Max · sesión de 5 h, semanal y por modelo' },
   { id: 'codex', name: 'ChatGPT y Codex', group: 'sub', desc: 'Plus / Pro · sesión y semanal de Codex' },
@@ -512,8 +674,16 @@ const PROVIDER_BADGE: Record<ProviderState, { label: string; tone: 'success' | '
   off: { label: 'Desactivado', tone: 'neutral' },
 };
 
-/** Estado de cada pestaña: activo, activo pero sin configurar, o desactivado. */
+/** Estado de cada pestaña: activo, activo pero sin configurar, o desactivado.
+ *  Una cuenta adicional activa y sin conectar también cuenta como «falta conectar». */
 function providerState(id: ProviderTab, cfg: AppConfig, s: SecretStatus): ProviderState {
+  const main = mainState(id, cfg, s);
+  const extras = accountsOf(cfg, id).filter((a) => a.enabled);
+  if (extras.some((a) => !accountReady(a, s))) return 'warn';
+  return main === 'off' && extras.length > 0 ? 'on' : main;
+}
+
+function mainState(id: ProviderTab, cfg: AppConfig, s: SecretStatus): ProviderState {
   const on = (enabled: boolean, ready = true): ProviderState => (!enabled ? 'off' : ready ? 'on' : 'warn');
   switch (id) {
     case 'claude':
@@ -562,6 +732,8 @@ export function Settings() {
   const [saved, setSaved] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<ProviderTab>(loadTab);
+  // Cuenta abierta en el panel del proveedor: su id, o el del proveedor para la principal.
+  const [accountSel, setAccountSel] = useState<string>(tab);
   // Menú lateral contraíble: solo iconos, recordado en este equipo.
   const [navCollapsed, setNavCollapsed] = useState<boolean>(() => {
     try {
@@ -607,6 +779,7 @@ export function Settings() {
   const selectTab = (t: ProviderTab) => {
     drawerOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setTab(t);
+    setAccountSel(t);
     setDrawerOpen(true);
     try {
       localStorage.setItem('settingsTab', t);
@@ -781,6 +954,39 @@ export function Settings() {
     }
   };
 
+  const tabAccounts = accountsOf(cfg, tab);
+  const selAccount = tabAccounts.find((a) => a.id === accountSel) ?? null;
+  const addAccount = () => {
+    const a = newAccount(cfg, tab as AccountProvider);
+    set('accounts', [...cfg.accounts, a]);
+    setAccountSel(a.id);
+  };
+  const patchAccount = (id: string, patch: Partial<Account>) =>
+    set(
+      'accounts',
+      cfg.accounts.map((a) => (a.id === id ? { ...a, ...patch } : a)),
+    );
+  /** ¿Está guardada tal cual? El login por CLI la busca en la config guardada. */
+  const accountPersisted = (a: Account) => {
+    const b = baseline?.accounts.find((x) => x.id === a.id);
+    return !!b && b.configDir === a.configDir;
+  };
+  const removeAccount = (a: Account) => {
+    set('accounts', cfg.accounts.filter((x) => x.id !== a.id));
+    setAccountSel(tab);
+    // Si nunca se guardó, el backend no sabrá borrar sus claves al guardar: se borran ya.
+    if (!baseline?.accounts.some((x) => x.id === a.id)) {
+      Promise.all(ACCOUNT_SECRETS[a.provider].map((k) => api.setSecret(secretKey(k, a.id), '')))
+        .then(loadSecrets)
+        .catch(console.error);
+    }
+  };
+  const providerName = (id: string) => {
+    const acc = cfg.accounts.find((a) => a.id === id);
+    const base = PROVIDER_TABS.find((t) => t.id === (acc?.provider ?? id))?.name;
+    return acc ? `${base ?? acc.provider} · ${acc.label}` : (base ?? id);
+  };
+
   const page = PAGES.find((p) => p.id === section) ?? PAGES[0];
   const pendingProviders = PROVIDER_TABS.filter((t) => providerState(t.id, cfg, secrets) === 'warn').length;
   const palette = derivePalette(cfg.accentColor);
@@ -797,7 +1003,10 @@ export function Settings() {
           <h3 className="eg-module-card__name">{t.name}</h3>
           <span className={`eg-status eg-status--${badge.tone}`}>{badge.label}</span>
         </div>
-        <span className="q-provider__desc">{t.desc}</span>
+        <span className="q-provider__desc">
+          {t.desc}
+          {accountsOf(cfg, t.id).length > 0 && ` · ${accountsOf(cfg, t.id).length + 1} cuentas`}
+        </span>
         <div className="eg-module-card__actions">
           <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" aria-haspopup="dialog" aria-expanded={drawerOpen && tab === t.id} onClick={() => selectTab(t.id)}>
             {st === 'warn' ? 'Conectar' : 'Configurar'}
@@ -947,6 +1156,39 @@ export function Settings() {
                 })()}
                 <div className="q-drawer__body" key={tab}>
                   <InDrawer.Provider value={true}>
+      <div className="q-accounts">
+        <div className="eg-tabs eg-tabs--sm" role="tablist" aria-label="Cuentas">
+          {[{ id: tab as string, label: 'Principal' }, ...tabAccounts].map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              role="tab"
+              className="eg-tabs__item"
+              aria-selected={(selAccount?.id ?? tab) === a.id}
+              onClick={() => setAccountSel(a.id)}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+        <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={addAccount}>
+          + Añadir cuenta
+        </button>
+      </div>
+      {selAccount && (
+        <AccountEditor
+          key={selAccount.id}
+          account={selAccount}
+          persisted={accountPersisted(selAccount)}
+          secrets={secrets}
+          onChange={(patch) => patchAccount(selAccount.id, patch)}
+          onRemove={() => removeAccount(selAccount)}
+          onSecrets={loadSecrets}
+          onError={setSaved}
+        />
+      )}
+      {!selAccount && (
+        <>
 
       {tab === 'claude' && (
         <Section kicker="Suscripción · OAuth" title="Claude (Pro / Max)">
@@ -1196,6 +1438,8 @@ export function Settings() {
           </Field>
         </Section>
       )}
+        </>
+      )}
                   </InDrawer.Provider>
                 </div>
                 <footer className="q-drawer__foot">
@@ -1284,7 +1528,7 @@ export function Settings() {
                     <div className="q-chips">
                       {cfg.hiddenProviders.map((id) => (
                         <button key={id} type="button" className="eg-chip" onClick={() => set('hiddenProviders', cfg.hiddenProviders.filter((x) => x !== id))}>
-                          {PROVIDER_TABS.find((t) => t.id === id)?.name ?? id} · mostrar
+                          {providerName(id)} · mostrar
                         </button>
                       ))}
                     </div>

@@ -102,7 +102,12 @@ fn get_config(state: State<'_, AppState>) -> AppConfig {
 fn save_config(app: AppHandle, state: State<'_, AppState>, config: AppConfig) -> Result<AppConfig, String> {
     let config = config.sanitized();
     config::save(&state.config_path, &config)?;
-    let old_shortcuts = std::mem::replace(&mut *state.config.lock().unwrap(), config.clone()).shortcuts;
+    let old = std::mem::replace(&mut *state.config.lock().unwrap(), config.clone());
+    // Las cuentas eliminadas se llevan sus secretos del almacén del sistema.
+    for gone in old.accounts.iter().filter(|a| !config.accounts.iter().any(|b| b.id == a.id)) {
+        secrets::forget_account(gone);
+    }
+    let old_shortcuts = old.shortcuts;
     if old_shortcuts != config.shortcuts {
         apply_shortcuts(&app, &config.shortcuts);
     }
@@ -116,8 +121,9 @@ fn save_config(app: AppHandle, state: State<'_, AppState>, config: AppConfig) ->
 }
 
 #[tauri::command]
-fn secret_status() -> BTreeMap<String, bool> {
-    secrets::status()
+fn secret_status(state: State<'_, AppState>) -> BTreeMap<String, bool> {
+    let accounts = state.config.lock().unwrap().accounts.clone();
+    secrets::status(&accounts)
 }
 
 #[tauri::command]
@@ -156,14 +162,20 @@ async fn nan_login_request(state: State<'_, AppState>, email: String) -> Result<
 }
 
 /// NaN: usa el enlace pegado para abrir sesión, la guarda en el almacén seguro y devuelve el usuario.
+/// `account`: id de una cuenta adicional de NaN; sin él, la sesión es la de la principal.
 #[tauri::command]
-async fn nan_login_complete(app: AppHandle, state: State<'_, AppState>, link: String) -> Result<String, String> {
+async fn nan_login_complete(app: AppHandle, state: State<'_, AppState>, link: String, account: Option<String>) -> Result<String, String> {
     let cookie = providers::nan_cloud::login_complete(&link).await?;
     let who = providers::nan_cloud::whoami(&state.http, &cookie).await.map_err(|e| match e {
         providers::nan_cloud::CloudError::Expired => "NaN no ha aceptado la sesión del enlace. Pide otro e inténtalo de nuevo.".to_string(),
         providers::nan_cloud::CloudError::Other(m) => m,
     })?;
-    secrets::set(secrets::NAN_SESSION, &cookie)?;
+    let key = match account.as_deref() {
+        Some(id) if id.starts_with("nan:") && config::is_account_id(id) => secrets::scoped(secrets::NAN_SESSION, id),
+        Some(_) => return Err("Cuenta de NaN no válida".into()),
+        None => secrets::NAN_SESSION.to_string(),
+    };
+    secrets::set(&key, &cookie)?;
     let _ = app.emit("config-changed", ());
     Ok(who)
 }
