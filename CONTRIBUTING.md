@@ -30,7 +30,7 @@ These are the scripts declared in `package.json`:
 | `npm run dev` | Frontend development server |
 | `npm run build` | Type-check and build the frontend |
 | `npm run typecheck` | TypeScript checks |
-| `npm test` | Vitest tests |
+| `npm test` | Vitest tests plus the release scripts' Node tests |
 | `cd src-tauri; cargo test` | Rust tests |
 | `npm run app:dev` | Run the desktop app with hot reload |
 | `npm run app:build` | Build a local (unsigned) installer |
@@ -55,6 +55,10 @@ Version bumping uses the existing script:
 npm run bump 0.2.0
 ```
 
+That updates `package.json`, `package-lock.json`, `src-tauri/Cargo.toml` and the
+`quorb` entry in `src-tauri/Cargo.lock`. It does not create tags: review the diff,
+open the preparation PR and release through the manual workflow.
+
 Builds:
 
 - `npm run app:build` builds an unsigned local installer and needs no keys.
@@ -68,7 +72,7 @@ npm run setup:signing
 
 That script generates the signing key in `%USERPROFILE%\.tauri\quorb.key` (it never overwrites an existing key), writes the public key to `src-tauri/tauri.conf.json` and, if GitHub CLI is authenticated, uploads `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` as repository secrets. Keep a backup of the private key and its password: if they are lost, installed versions will not accept updates signed with a different key.
 
-**Release workflow status.** The release workflow lives at `docs/mover-a-.github/workflows/release.yml` in this repository, together with the issue templates. It is not active in that location: it only runs once that folder is moved to `.github`. Do not assume automated releases are active today. When active, it runs on a `v*` tag, runs the tests, builds on Windows, signs the update and publishes the installers with `latest.json`.
+**Release workflow status.** The active workflow is `.github/workflows/release.yml`. It never triggers on tags or pushes: a maintainer starts it manually from the Actions tab on `main`, passing the stable `version` and the full 40-character `source_sha` of an already-merged commit. It validates the inputs, manifest versions, notes file, tag collision and updater public key, then runs the tests, builds on Windows and creates a **draft** release that you publish yourself. Signing secrets are only exposed in the signing/bundle step. Until the owner provisions the updater key and the repository secrets, treat the release as blocked, not automated.
 
 ---
 
@@ -98,7 +102,7 @@ Estos son los scripts declarados en `package.json`:
 | `npm run dev` | Servidor de desarrollo del frontend |
 | `npm run build` | Comprobar tipos y compilar el frontend |
 | `npm run typecheck` | Comprobar TypeScript |
-| `npm test` | Tests de Vitest |
+| `npm test` | Tests de Vitest y tests Node de los scripts de release |
 | `cd src-tauri; cargo test` | Tests de Rust |
 | `npm run app:dev` | Ejecutar la app de escritorio con hot reload |
 | `npm run app:build` | Compilar un instalador local (sin firma) |
@@ -123,6 +127,10 @@ El cambio de versión usa el script existente:
 npm run bump 0.2.0
 ```
 
+Actualiza `package.json`, `package-lock.json`, `src-tauri/Cargo.toml` y la entrada
+`quorb` de `src-tauri/Cargo.lock`. No crea tags: revisa el diff, abre la PR de
+preparación y publica con el workflow manual.
+
 Compilaciones:
 
 - `npm run app:build` compila un instalador local sin firma y no necesita claves.
@@ -136,7 +144,7 @@ npm run setup:signing
 
 Ese script genera la clave de firma en `%USERPROFILE%\.tauri\quorb.key` (nunca sobrescribe una clave existente), escribe la clave pública en `src-tauri/tauri.conf.json` y, si GitHub CLI tiene sesión iniciada, sube `TAURI_SIGNING_PRIVATE_KEY` y `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` como secretos del repositorio. Guardad una copia de la clave privada y su contraseña: si se pierden, las versiones instaladas no aceptarán actualizaciones firmadas con otra clave.
 
-**Estado del workflow de release.** El workflow de release está en `docs/mover-a-.github/workflows/release.yml` en este repositorio, junto con las plantillas de issues. No está activo en esa ubicación: solo se ejecuta cuando se mueve esa carpeta a `.github`. No presupongáis que las releases automáticas están activas hoy. Cuando esté activo, se ejecuta con un tag `v*`, pasa los tests, compila en Windows, firma la actualización y publica los instaladores con `latest.json`.
+**Estado del workflow de release.** El workflow activo es `.github/workflows/release.yml`. No se dispara con tags ni pushes: un mantenedor lo inicia a mano desde la pestaña Actions sobre `main`, indicando la `version` estable y el `source_sha` completo de 40 caracteres de un commit ya fusionado. Valida los inputs, las versiones de los manifiestos, las notas, la colisión de tag y la clave pública del updater; después pasa los tests, compila en Windows y crea un **borrador** de release que publicas tú. Los secretos de firma solo se exponen en el paso de firma/empaquetado. Hasta que el owner aprovisione la clave y los secretos del repositorio, considera la release bloqueada, no automática.
 
 <!-- egdev:contact:start -->
 ## Contact
