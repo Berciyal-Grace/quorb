@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AppConfig } from './types';
+import type { Account, AppConfig, SecretStatus } from './types';
 import type { AutostartApplyOutcome } from './autostart-controller';
-import { mixedSaveMessage, runMixedSave, type MixedSaveDeps, type MixedSaveInput, type MixedSaveResult } from './settings-save';
+import { accountReady } from './accounts';
+import { mixedSaveMessage, reloadSecretsAfterSave, runMixedSave, type MixedSaveDeps, type MixedSaveInput, type MixedSaveResult } from './settings-save';
 
 const config = (over: Record<string, unknown> = {}) =>
   ({ refreshMinutes: 5, orbSize: 48, accentColor: '#ff0036', ...over }) as unknown as AppConfig;
@@ -89,6 +90,39 @@ describe('runMixedSave', () => {
     const deps = setup({ saveConfig: vi.fn(async () => saved), applyAutostart: vi.fn(async () => confirmed(true)) });
     const result = await runMixedSave(input({ configDirty: true, autostartDirty: true, autostartDesired: true }), deps);
     expect(result).toEqual({ config: { status: 'saved', saved }, autostart: { status: 'confirmed' } });
+  });
+});
+
+describe('reloadSecretsAfterSave', () => {
+  const account: Account = {
+    id: 'openrouter:abc123',
+    provider: 'openrouter',
+    label: 'Cuenta 2',
+    enabled: true,
+    configDir: null,
+    username: '',
+    plan: '',
+    customAllowance: null,
+    monthlyBudgetUsd: null,
+  };
+
+  it('relee los secretos tras persistir la cuenta para que deje de faltar conectar', async () => {
+    // El backend (`secret_status`) solo enumera cuentas ya persistidas: la key
+    // guardada antes de crear la cuenta no aparece hasta que se guarda la config.
+    let persisted = false;
+    const reload = vi.fn(async (): Promise<SecretStatus> => (persisted ? { 'openrouter_api_key@openrouter:abc123': true } : {}));
+    expect(accountReady(account, await reload())).toBe(false);
+    persisted = true;
+    const status = await reloadSecretsAfterSave({ status: 'saved', saved: config() }, reload);
+    expect(status).not.toBeNull();
+    expect(accountReady(account, status ?? {})).toBe(true);
+  });
+
+  it('no relee secretos si la config no se guardó', async () => {
+    const reload = vi.fn(async (): Promise<SecretStatus> => ({}));
+    expect(await reloadSecretsAfterSave({ status: 'failed', message: 'write failed' }, reload)).toBeNull();
+    expect(await reloadSecretsAfterSave({ status: 'skipped' }, reload)).toBeNull();
+    expect(reload).not.toHaveBeenCalled();
   });
 });
 

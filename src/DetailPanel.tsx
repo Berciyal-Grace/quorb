@@ -7,7 +7,7 @@ import { ProviderCard } from './components/ProviderCard';
 import { ProviderDetails } from './components/ProviderDetails';
 import { api } from './lib/api';
 import { reportSummary } from './lib/format';
-import { OFFICIAL_USAGE_URL } from './lib/order';
+import { officialUsageUrl } from './lib/order';
 import { createLatestQueue, detailBounds, DETAIL_EVENTS, type DetailInteraction, type DetailState } from './lib/detail-panel';
 
 function readDetailsPreference(): boolean {
@@ -110,6 +110,7 @@ export function DetailPanel() {
   }, [toast]);
 
   if (!data) return null;
+  const usageUrl = officialUsageUrl(data.report.id);
   // El panel se diseña a la medida del DS (círculo de 56 px) y se escala entero con el tamaño de los círculos.
   const zoom = Math.max(0.6, Math.min(1.5, data.orbSize / 56));
   const updated = data.updatedAt == null ? '—' : new Date(data.updatedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
@@ -139,7 +140,7 @@ export function DetailPanel() {
         </button>
         {detailsOpen && <ProviderDetails key={data.report.id} report={data.report} />}
         <div className="panel__actions">
-          {OFFICIAL_USAGE_URL[data.report.id] && <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={() => openUrl(OFFICIAL_USAGE_URL[data.report.id]).catch(console.warn)}>Uso oficial ↗</button>}
+          {usageUrl && <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={() => openUrl(usageUrl).catch(console.warn)}>Uso oficial ↗</button>}
           <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={async () => setToast((await copyText(reportSummary(data.report))) ? 'Copiado ✓' : 'No se pudo copiar')}>{toast ?? 'Copiar resumen'}</button>
           <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={() => interact('hide')} title="Se sigue consultando y avisando; recupéralo en Ajustes">Ocultar</button>
         </div>

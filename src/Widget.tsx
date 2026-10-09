@@ -3,7 +3,7 @@ import { availableMonitors, currentMonitor, getCurrentWindow, primaryMonitor, ty
 import { PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
-import { api } from './lib/api';
+import { api, type WidgetPatch } from './lib/api';
 import { mergeReports, peakMeter, trayTooltip } from './lib/format';
 import { derivePalette } from './lib/palette';
 import { detectAlerts, effectFor, notificationText, type AlertMemory } from './lib/alerts';
@@ -236,10 +236,8 @@ export function Widget() {
   }, []);
 
   const patchConfig = useCallback(
-    async (patch: Partial<AppConfig>) => {
-      const cfg = configRef.current;
-      if (!cfg) return;
-      applyConfig(await api.saveConfig({ ...cfg, ...patch }));
+    async (patch: WidgetPatch) => {
+      applyConfig(await api.patchConfig(patch));
     },
     [applyConfig],
   );

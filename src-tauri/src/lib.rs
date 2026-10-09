@@ -98,11 +98,30 @@ fn get_config(state: State<'_, AppState>) -> AppConfig {
     state.config.lock().unwrap().clone()
 }
 
+/// Sustituye la config bajo el lock y la persiste en el mismo paso, para que
+/// `save_config` y `patch_config` no se pisen a medias (merge atómico).
+/// Devuelve (anterior, nueva). Los efectos secundarios van fuera del lock.
+fn update_config(
+    state: &AppState,
+    mutate: impl FnOnce(&mut AppConfig),
+) -> Result<(AppConfig, AppConfig), String> {
+    let mut guard = state.config.lock().unwrap();
+    let mut next = guard.clone();
+    mutate(&mut next);
+    let next = next.sanitized();
+    config::save(&state.config_path, &next)?;
+    let old = std::mem::replace(&mut *guard, next.clone());
+    Ok((old, next))
+}
+
 #[tauri::command]
 fn save_config(app: AppHandle, state: State<'_, AppState>, config: AppConfig) -> Result<AppConfig, String> {
-    let config = config.sanitized();
-    config::save(&state.config_path, &config)?;
-    let old_shortcuts = std::mem::replace(&mut *state.config.lock().unwrap(), config.clone()).shortcuts;
+    let (old, config) = update_config(&state, |current| *current = config)?;
+    // Las cuentas eliminadas se llevan sus secretos del almacén del sistema.
+    for gone in old.accounts.iter().filter(|a| !config.accounts.iter().any(|b| b.id == a.id)) {
+        secrets::forget_account(gone);
+    }
+    let old_shortcuts = old.shortcuts;
     if old_shortcuts != config.shortcuts {
         apply_shortcuts(&app, &config.shortcuts);
     }
@@ -115,9 +134,19 @@ fn save_config(app: AppHandle, state: State<'_, AppState>, config: AppConfig) ->
     Ok(config)
 }
 
+/// Merge atómico de los campos del widget sobre la config actual: nunca toca
+/// cuentas ni secretos, así un snapshot obsoleto no puede borrar una cuenta.
 #[tauri::command]
-fn secret_status() -> BTreeMap<String, bool> {
-    secrets::status()
+fn patch_config(app: AppHandle, state: State<'_, AppState>, patch: config::WidgetPatch) -> Result<AppConfig, String> {
+    let (_old, config) = update_config(&state, |current| current.apply_widget_patch(patch))?;
+    let _ = app.emit("config-changed", &config);
+    Ok(config)
+}
+
+#[tauri::command]
+fn secret_status(state: State<'_, AppState>) -> BTreeMap<String, bool> {
+    let accounts = state.config.lock().unwrap().accounts.clone();
+    secrets::status(&accounts)
 }
 
 #[tauri::command]
@@ -156,14 +185,20 @@ async fn nan_login_request(state: State<'_, AppState>, email: String) -> Result<
 }
 
 /// NaN: usa el enlace pegado para abrir sesión, la guarda en el almacén seguro y devuelve el usuario.
+/// `account`: id de una cuenta adicional de NaN; sin él, la sesión es la de la principal.
 #[tauri::command]
-async fn nan_login_complete(app: AppHandle, state: State<'_, AppState>, link: String) -> Result<String, String> {
+async fn nan_login_complete(app: AppHandle, state: State<'_, AppState>, link: String, account: Option<String>) -> Result<String, String> {
     let cookie = providers::nan_cloud::login_complete(&link).await?;
     let who = providers::nan_cloud::whoami(&state.http, &cookie).await.map_err(|e| match e {
         providers::nan_cloud::CloudError::Expired => "NaN no ha aceptado la sesión del enlace. Pide otro e inténtalo de nuevo.".to_string(),
         providers::nan_cloud::CloudError::Other(m) => m,
     })?;
-    secrets::set(secrets::NAN_SESSION, &cookie)?;
+    let key = match account.as_deref() {
+        Some(id) if id.starts_with("nan:") && config::is_account_id(id) => secrets::scoped(secrets::NAN_SESSION, id),
+        Some(_) => return Err("Cuenta de NaN no válida".into()),
+        None => secrets::NAN_SESSION.to_string(),
+    };
+    secrets::set(&key, &cookie)?;
     let _ = app.emit("config-changed", ());
     Ok(who)
 }
@@ -477,6 +512,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_config,
             save_config,
+            patch_config,
             secret_status,
             set_secret,
             fetch_usage,

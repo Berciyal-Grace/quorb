@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { providerOf } from '../lib/accounts';
 import { scopeSvg } from '../lib/svg';
 
 // Logos de cada suscripción, en src/assets/logos/.
@@ -76,8 +77,10 @@ const MONOGRAM: Record<string, { text: string; sub?: string }> = {
 /** Las APIs de pago por uso llevan una etiqueta «API» para distinguirlas de la suscripción. */
 const API_TAG = new Set(['anthropic_api', 'openai_api']);
 
-export function ProviderLogo({ id, name }: { id: string; name: string }) {
+export function ProviderLogo({ id: rawId, name }: { id: string; name: string }) {
   const [broken, setBroken] = useState(false);
+  // Las cuentas adicionales (`claude:trabajo`) llevan el logo de su proveedor.
+  const id = providerOf(rawId);
   const logo = findLogo(id);
 
   if (logo && !broken) {

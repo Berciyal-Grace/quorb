@@ -384,6 +384,10 @@ html[data-window='settings'] body { background: var(--color-bg-canvas); color: v
   font-size: 15px;
 }
 .q-drawer__section { display: flex; flex-direction: column; gap: 16px; }
+/* Cuentas del proveedor: principal + adicionales, encima de su configuración */
+.q-accounts { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
+.q-accounts .eg-tabs { flex: 1; min-width: 0; }
+.q-accounts > .eg-btn { flex: none; }
 .q-drawer__foot {
   display: flex;
   align-items: center;

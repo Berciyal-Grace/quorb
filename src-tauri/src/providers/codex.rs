@@ -5,7 +5,7 @@
 //! consulta el endpoint que usa `/status` de Codex. NO OFICIAL.
 //! La app no refresca tokens: si caducan, basta con ejecutar `codex`.
 
-use super::{home, net_error, read_json, resolve_path, unix_to_rfc3339};
+use super::{home, net_error, read_json, resolve_path, unix_to_rfc3339, Who};
 use crate::config::SubscriptionConfig;
 use crate::model::{Kind, Meter, Status, UsageReport};
 use serde_json::Value;
@@ -13,8 +13,8 @@ use std::path::PathBuf;
 
 const USAGE_URL: &str = "https://chatgpt.com/backend-api/wham/usage";
 
-pub async fn fetch(cfg: &SubscriptionConfig, http: &reqwest::Client) -> UsageReport {
-    let report = UsageReport::new("codex", "ChatGPT · Codex", Kind::Subscription);
+pub async fn fetch(cfg: &SubscriptionConfig, who: Who<'_>, http: &reqwest::Client) -> UsageReport {
+    let report = who.report("ChatGPT · Codex", Kind::Subscription);
 
     let mut candidates: Vec<PathBuf> = vec![];
     if let Ok(dir) = std::env::var("CODEX_HOME") {

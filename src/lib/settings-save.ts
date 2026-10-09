@@ -40,6 +40,21 @@ export interface MixedSaveResult {
   autostart: MixedAutostartPart;
 }
 
+/**
+ * Relee lo que depende de la config persistida. `secret_status` enumera cuentas
+ * guardadas: la key de una cuenta adicional se puede guardar antes de que la
+ * cuenta exista en la config, así que hasta que no se persiste su secreto
+ * scoped no aparece y el proveedor queda «Falta conectar». Sin un guardado
+ * confirmado no hay nada nuevo que leer.
+ */
+export async function reloadSecretsAfterSave<S>(
+  configPart: MixedSaveResult['config'],
+  reload: () => Promise<S>,
+): Promise<S | null> {
+  if (configPart.status !== 'saved') return null;
+  return reload();
+}
+
 export async function runMixedSave(input: MixedSaveInput, deps: MixedSaveDeps): Promise<MixedSaveResult> {
   const configPart = async (): Promise<MixedConfigPart> => {
     if (!input.configDirty) return { status: 'skipped' };

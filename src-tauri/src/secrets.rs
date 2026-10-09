@@ -29,8 +29,34 @@ pub const ALL: [&str; 7] = [
     CURSOR_TOKEN,
 ];
 
+/// Secretos que usa cada proveedor (las cuentas extra guardan los suyos con sufijo).
+pub fn for_provider(provider: &str) -> &'static [&'static str] {
+    match provider {
+        "cursor" => &[CURSOR_TOKEN],
+        "copilot" => &[GITHUB_TOKEN],
+        "openrouter" => &[OPENROUTER_API_KEY],
+        "anthropic_api" => &[ANTHROPIC_ADMIN_KEY],
+        "openai_api" => &[OPENAI_ADMIN_KEY],
+        "nan" => &[NAN_API_KEY, NAN_SESSION],
+        _ => &[],
+    }
+}
+
+/// Nombre del secreto `key` para una cuenta extra (`openrouter_api_key@openrouter:a1b2c3`).
+pub fn scoped(key: &str, account_id: &str) -> String {
+    format!("{key}@{account_id}")
+}
+
+/// `key` o `key@<id de cuenta>`, con `key` de la lista y un id de cuenta válido.
+fn is_known(key: &str) -> bool {
+    match key.split_once('@') {
+        None => ALL.contains(&key),
+        Some((base, account)) => ALL.contains(&base) && crate::config::is_account_id(account),
+    }
+}
+
 fn entry(key: &str) -> Result<keyring::Entry, String> {
-    if !ALL.contains(&key) {
+    if !is_known(key) {
         return Err(format!("Clave desconocida: {key}"));
     }
     keyring::Entry::new(SERVICE, key).map_err(|e| e.to_string())
@@ -42,6 +68,9 @@ pub fn get(key: &str) -> Option<String> {
         .get_password()
         .ok()
         .filter(|s| !s.trim().is_empty());
+    if key.contains('@') {
+        return current;
+    }
     current.or_else(|| migrate_legacy(key))
 }
 
@@ -68,7 +97,34 @@ pub fn set(key: &str, value: &str) -> Result<(), String> {
     e.set_password(value).map_err(|err| err.to_string())
 }
 
-/// Qué secretos hay configurados (sin revelar su valor).
-pub fn status() -> BTreeMap<String, bool> {
-    ALL.iter().map(|k| (k.to_string(), get(k).is_some())).collect()
+/// Qué secretos hay configurados (sin revelar su valor), incluidos los de las cuentas extra.
+pub fn status(accounts: &[crate::config::Account]) -> BTreeMap<String, bool> {
+    let extra = accounts
+        .iter()
+        .flat_map(|a| for_provider(&a.provider).iter().map(move |k| scoped(k, &a.id)));
+    ALL.iter().map(|k| k.to_string()).chain(extra).map(|k| {
+        let set = get(&k).is_some();
+        (k, set)
+    }).collect()
+}
+
+/// Borra los secretos de una cuenta extra que se ha eliminado.
+pub fn forget_account(account: &crate::config::Account) {
+    for k in for_provider(&account.provider) {
+        let _ = set(&scoped(k, &account.id), "");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scoped_keys_are_validated() {
+        assert!(is_known(OPENROUTER_API_KEY));
+        assert!(is_known(&scoped(OPENROUTER_API_KEY, "openrouter:a1b2c3")));
+        assert!(!is_known("otra_cosa"));
+        assert!(!is_known("otra_cosa@openrouter:a1b2c3"));
+        assert!(!is_known("openrouter_api_key@../../x"));
+    }
 }

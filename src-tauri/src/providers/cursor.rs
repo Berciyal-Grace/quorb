@@ -6,7 +6,7 @@
 //! y se consulta `GET https://cursor.com/api/usage-summary` (NO OFICIAL) con la cookie
 //! `WorkosCursorSessionToken=<userId>%3A%3A<token>`. Solo se lee; nunca se escribe en Cursor.
 
-use super::net_error;
+use super::{net_error, Who};
 use crate::config::SubscriptionConfig;
 use crate::model::{Kind, Meter, Spend, Status, UsageReport};
 use crate::secrets;
@@ -15,17 +15,22 @@ use chrono::DateTime;
 use serde_json::Value;
 use std::path::PathBuf;
 
-pub async fn fetch(cfg: &SubscriptionConfig, http: &reqwest::Client) -> UsageReport {
-    let report = UsageReport::new("cursor", "Cursor", Kind::Subscription);
+pub async fn fetch(cfg: &SubscriptionConfig, who: Who<'_>, http: &reqwest::Client) -> UsageReport {
+    let report = who.report("Cursor", Kind::Subscription);
 
     // Token: el pegado a mano en Ajustes manda; si no, el de la app de Cursor.
-    let token = match secrets::get(secrets::CURSOR_TOKEN) {
+    // Las cuentas adicionales solo usan su token (la app guarda una única sesión).
+    let token = match who.secret(secrets::CURSOR_TOKEN) {
         Some(t) => t,
+        None if !who.is_main() => {
+            return report.fail(Status::Unconfigured, "Pega el token de esta cuenta de Cursor en Ajustes.");
+        }
         None => match read_app_token(cfg.credentials_path.as_deref()) {
             Ok(t) => t,
             Err(e) => return report.fail(Status::NeedsLogin, e),
         },
     };
+    let token = jwt_from_cookie(&token);
     let Some(user_id) = user_id_from_jwt(&token) else {
         return report.fail(Status::Error, "No reconozco el token de Cursor (¿formato cambiado?).");
     };
@@ -105,6 +110,13 @@ fn read_app_token(explicit: Option<&str>) -> Result<String, String> {
 }
 
 /// `sub` del JWT («auth0|user_XXXX») → «user_XXXX».
+/// Acepta el token o el valor entero de la cookie `WorkosCursorSessionToken`
+/// (`<userId>%3A%3A<token>`), que es lo que se copia del navegador.
+pub(crate) fn jwt_from_cookie(raw: &str) -> String {
+    let raw = raw.trim();
+    raw.rsplit("%3A%3A").next().unwrap_or(raw).rsplit("::").next().unwrap_or(raw).to_string()
+}
+
 pub(crate) fn user_id_from_jwt(token: &str) -> Option<String> {
     let payload = token.split('.').nth(1)?;
     let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
@@ -190,6 +202,13 @@ pub(crate) fn parse(v: &Value) -> Parsed {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn accepts_the_whole_cookie() {
+        assert_eq!(jwt_from_cookie("user_01%3A%3Aaaa.bbb.ccc"), "aaa.bbb.ccc");
+        assert_eq!(jwt_from_cookie(" user_01::aaa.bbb.ccc "), "aaa.bbb.ccc");
+        assert_eq!(jwt_from_cookie("aaa.bbb.ccc"), "aaa.bbb.ccc");
+    }
 
     #[test]
     fn parses_usage_summary() {

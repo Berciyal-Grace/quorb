@@ -1,7 +1,7 @@
 //! OpenAI API (pago por uso) — gasto del mes con la Costs API oficial.
 //! Requiere una Admin key (platform.openai.com > Settings > Organization > Admin keys).
 
-use super::{month_start, month_window, net_error};
+use super::{month_start, month_window, net_error, Who};
 use crate::config::ApiCostConfig;
 use crate::model::{Kind, Meter, Spend, Status, UsageReport};
 use crate::secrets;
@@ -9,9 +9,9 @@ use serde_json::Value;
 
 const URL: &str = "https://api.openai.com/v1/organization/costs";
 
-pub async fn fetch(cfg: &ApiCostConfig, http: &reqwest::Client) -> UsageReport {
-    let report = UsageReport::new("openai_api", "OpenAI API", Kind::Api);
-    let Some(key) = secrets::get(secrets::OPENAI_ADMIN_KEY) else {
+pub async fn fetch(cfg: &ApiCostConfig, who: Who<'_>, http: &reqwest::Client) -> UsageReport {
+    let report = who.report("OpenAI API", Kind::Api);
+    let Some(key) = who.secret(secrets::OPENAI_ADMIN_KEY) else {
         return report.fail(Status::Unconfigured, "Añade una Admin key de OpenAI en Ajustes.");
     };
 

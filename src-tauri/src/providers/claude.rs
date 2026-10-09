@@ -8,15 +8,15 @@
 //! token y podría cerrar la sesión del CLI). Si caduca, se abre Claude Code,
 //! que lo renueva solo.
 
-use super::{home, net_error, read_json, resolve_path};
+use super::{home, net_error, read_json, resolve_path, Who};
 use crate::config::SubscriptionConfig;
 use crate::model::{Kind, Meter, Status, UsageReport};
 use serde_json::Value;
 
 const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 
-pub async fn fetch(cfg: &SubscriptionConfig, http: &reqwest::Client) -> UsageReport {
-    let report = UsageReport::new("claude", "Claude", Kind::Subscription);
+pub async fn fetch(cfg: &SubscriptionConfig, who: Who<'_>, http: &reqwest::Client) -> UsageReport {
+    let report = who.report("Claude", Kind::Subscription);
 
     let candidates = vec![home().join(".claude").join(".credentials.json")];
     let path = match resolve_path(cfg.credentials_path.as_deref(), &candidates) {

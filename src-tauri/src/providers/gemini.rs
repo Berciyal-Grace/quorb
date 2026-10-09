@@ -10,7 +10,7 @@
 //! el refresh token y el cliente OAuth público de Gemini CLI (app instalada); no se
 //! escribe nada en el fichero de la CLI y Google no rota el refresh token.
 
-use super::{home, net_error, read_json, resolve_path};
+use super::{home, net_error, read_json, resolve_path, Who};
 use crate::config::SubscriptionConfig;
 use crate::model::{Kind, Meter, Status, UsageReport};
 use serde_json::{json, Value};
@@ -22,11 +22,11 @@ const API: &str = "https://cloudcode-pa.googleapis.com/v1internal";
 const CLIENT_ID: &str = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
 const CLIENT_SECRET: &str = "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";
 
-/// Token renovado en memoria: (access_token, caduca_en_ms).
-static CACHED: Mutex<Option<(String, i64)>> = Mutex::new(None);
+/// Tokens renovados en memoria por cuenta (clave: refresh token): (access_token, caduca_en_ms).
+static CACHED: Mutex<BTreeMap<String, (String, i64)>> = Mutex::new(BTreeMap::new());
 
-pub async fn fetch(cfg: &SubscriptionConfig, http: &reqwest::Client) -> UsageReport {
-    let report = UsageReport::new("gemini", "Gemini", Kind::Subscription);
+pub async fn fetch(cfg: &SubscriptionConfig, who: Who<'_>, http: &reqwest::Client) -> UsageReport {
+    let report = who.report("Gemini", Kind::Subscription);
     let candidates = vec![home().join(".gemini").join("oauth_creds.json")];
     let path = match resolve_path(cfg.credentials_path.as_deref(), &candidates) {
         Ok(p) => p,
@@ -78,16 +78,16 @@ async fn access_token(creds: &Value, http: &reqwest::Client) -> Result<String, S
             return Ok(t.to_string());
         }
     }
-    let cached = CACHED.lock().unwrap().clone();
+    let refresh = creds
+        .get("refresh_token")
+        .and_then(Value::as_str)
+        .ok_or("La sesión de Gemini CLI ha caducado. Ábrelo para renovarla.")?;
+    let cached = CACHED.lock().unwrap().get(refresh).cloned();
     if let Some((t, exp)) = cached {
         if exp - 60_000 > now {
             return Ok(t);
         }
     }
-    let refresh = creds
-        .get("refresh_token")
-        .and_then(Value::as_str)
-        .ok_or("La sesión de Gemini CLI ha caducado. Ábrelo para renovarla.")?;
     let res = http
         .post("https://oauth2.googleapis.com/token")
         .form(&[
@@ -105,7 +105,7 @@ async fn access_token(creds: &Value, http: &reqwest::Client) -> Result<String, S
     let v: Value = res.json().await.map_err(|e| e.to_string())?;
     let t = v.get("access_token").and_then(Value::as_str).ok_or("Respuesta de Google sin access_token")?.to_string();
     let exp = now + v.get("expires_in").and_then(Value::as_i64).unwrap_or(3600) * 1000;
-    *CACHED.lock().unwrap() = Some((t.clone(), exp));
+    CACHED.lock().unwrap().insert(refresh.to_string(), (t.clone(), exp));
     Ok(t)
 }
 
@@ -120,7 +120,7 @@ async fn post(http: &reqwest::Client, token: &str, method: &str, body: &Value) -
     match res.status().as_u16() {
         200 => res.json().await.map_err(|e| (Status::Error, format!("Respuesta inesperada: {e}"))),
         401 => {
-            *CACHED.lock().unwrap() = None;
+            CACHED.lock().unwrap().clear();
             Err((Status::NeedsLogin, "Sesión de Gemini rechazada. Abre Gemini CLI para renovarla.".into()))
         }
         429 => Err((Status::Warning, "El endpoint de cuotas está limitando peticiones.".into())),

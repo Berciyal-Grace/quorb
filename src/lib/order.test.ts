@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyOrder, dropIndex, moveTo } from './order';
+import { OFFICIAL_USAGE_URL, applyOrder, dropIndex, moveTo, officialUsageUrl } from './order';
 import { reportSummary } from './format';
 import type { UsageReport } from './types';
 
@@ -21,6 +21,14 @@ describe('order', () => {
     expect(dropIndex([10, 50, 90], 5)).toBe(0);
     expect(dropIndex([10, 50, 90], 60)).toBe(2);
     expect(dropIndex([10, 50, 90], 200)).toBe(3);
+  });
+
+  it('resolves the official usage URL for main and scoped ids', () => {
+    expect(officialUsageUrl('openrouter')).toBe(OFFICIAL_USAGE_URL.openrouter);
+    expect(officialUsageUrl('openrouter:abc123')).toBe(OFFICIAL_USAGE_URL.openrouter);
+    expect(officialUsageUrl('claude:trabajo')).toBe(OFFICIAL_USAGE_URL.claude);
+    expect(officialUsageUrl('desconocido')).toBeUndefined();
+    expect(officialUsageUrl('desconocido:abc')).toBeUndefined();
   });
 
   it('builds a copyable summary', () => {
