@@ -11,7 +11,6 @@ import { applyOrder, dropIndex, moveTo } from './lib/order';
 import { contains, isEdge, isVertical, nearestEdge, panelHeightLimit, stripRect, type Edge, type Rect } from './lib/dock';
 import { ORB_SIZE, type AppConfig, type UsageReport } from './lib/types';
 import { checkForUpdate, installUpdate, shouldNotifyUpdate, updateErrorText, UPDATE_EVERY_MS, UPDATE_FIRST_DELAY_MS, type UpdatePhase } from './lib/updater';
-import { retryWithBackoff, STARTUP_RETRY, USAGE_RETRY } from './lib/startup';
 import { DETAIL_EVENTS, DETAIL_WINDOW, isCurrentDetailInteraction, type DetailInteraction, type DetailState } from './lib/detail-panel';
 import { ProviderGauge } from './components/ProviderGauge';
 
@@ -161,7 +160,6 @@ export function Widget() {
   const reportsRef = useRef<UsageReport[]>([]);
   const geoRef = useRef<Geo | null>(null);
   const inFlight = useRef(false);
-  const refreshAbort = useRef<AbortController | null>(null);
   const closeTimer = useRef<number | undefined>(undefined);
   const openTimer = useRef<number | undefined>(undefined);
   const shown = useRef(false);
@@ -205,15 +203,9 @@ export function Widget() {
   const refresh = useCallback(async () => {
     if (inFlight.current) return;
     inFlight.current = true;
-    const controller = new AbortController();
-    refreshAbort.current = controller;
     setLoading(true);
     try {
-      // Reintento acotado en cada refresco (arranque, manual o intervalo): un
-      // fallo transitorio no obliga a esperar al siguiente ciclo. Si se agota,
-      // el error se muestra (no se oculta el fallo).
-      const next = await retryWithBackoff(() => api.fetchUsage(), { ...USAGE_RETRY, signal: controller.signal });
-      if (controller.signal.aborted) return;
+      const next = await api.fetchUsage();
       const prev = reportsRef.current;
       const merged = mergeReports(prev, next);
       reportsRef.current = merged;
@@ -223,10 +215,10 @@ export function Widget() {
       setUpdatedAt(new Date());
       setError(null);
     } catch (e) {
-      if (!controller.signal.aborted) setError(String(e));
+      setError(String(e));
     } finally {
       inFlight.current = false;
-      if (!controller.signal.aborted) setLoading(false);
+      setLoading(false);
     }
   }, [runAlerts]);
 
@@ -244,32 +236,8 @@ export function Widget() {
     [applyConfig],
   );
 
-  // Recuperación manual tras agotar los reintentos: recarga la config si aún no
-  // llegó y vuelve a pedir datos, sin que el usuario tenga que reiniciar.
-  const retryStartup = useCallback(async () => {
-    if (!configRef.current) {
-      try {
-        applyConfig(await api.getConfig());
-      } catch (e) {
-        setError(String(e));
-        return;
-      }
-    }
-    await refresh();
-  }, [applyConfig, refresh]);
-
   useEffect(() => {
-    // La ventana puede montar antes de que el backend registre su estado: sin
-    // reintento la config no llega y la tira queda vacía o en una posición
-    // arbitraria hasta un refresco manual. Cancelable al desmontar.
-    const controller = new AbortController();
-    retryWithBackoff(() => api.getConfig(), { ...STARTUP_RETRY, signal: controller.signal })
-      .then((c) => {
-        if (!controller.signal.aborted) applyConfig(c);
-      })
-      .catch((e) => {
-        if (!controller.signal.aborted) setError(String(e));
-      });
+    api.getConfig().then(applyConfig).catch((e) => setError(String(e)));
     const unlisten = [
       listen('config-changed', async () => {
         const prev = configRef.current;
@@ -281,14 +249,8 @@ export function Widget() {
       listen('refresh-now', () => refresh()),
       listen('open-peak', () => openPeakRef.current()),
     ];
-    return () => {
-      controller.abort();
-      unlisten.forEach((p) => p.then((f) => f()));
-    };
+    return () => unlisten.forEach((p) => p.then((f) => f()));
   }, [refresh, applyConfig]);
-
-  // Al desmontar, corta cualquier reintento de uso pendiente (sin setState tardío).
-  useEffect(() => () => refreshAbort.current?.abort(), []);
 
   const refreshMinutes = config?.refreshMinutes;
   useEffect(() => {
@@ -299,11 +261,9 @@ export function Widget() {
   }, [refreshMinutes, refresh]);
 
   // ───── monitor (y cambios de resolución / barra de tareas) ─────
-  // Se resuelve aunque la config aún no haya llegado (monitor actual/principal),
-  // para que la tira no quede vacía ni en una posición arbitraria si el primer
-  // getConfig agota sus reintentos.
-  const dockMonitor = config ? config.dockMonitor : null;
+  const dockMonitor = config ? config.dockMonitor : undefined;
   useEffect(() => {
+    if (dockMonitor === undefined) return;
     let alive = true;
     const update = () =>
       resolveGeo(dockMonitor).then((g) => {
@@ -747,18 +707,11 @@ export function Widget() {
               pointer={orbHandlers(r.id)}
             />
           ))}
-          {visible.length === 0 &&
-            (error ? (
-              <button className="btn btn--accent btn--sm" onClick={retryStartup} title={error}>
-                Reintentar
-              </button>
-            ) : loading || !config ? (
-              <span style={{ color: 'var(--text-2)', fontSize: 11, padding: '0 6px' }}>Cargando…</span>
-            ) : (
-              <button className="btn btn--accent btn--sm" onClick={() => api.openSettings()}>
-                Configurar
-              </button>
-            ))}
+          {config && visible.length === 0 && !loading && (
+            <button className="btn btn--accent btn--sm" onClick={() => api.openSettings()}>
+              Configurar
+            </button>
+          )}
         </div>
 
         <div className="strip__tools">

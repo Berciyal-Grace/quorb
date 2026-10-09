@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
@@ -7,7 +7,6 @@ import { getVersion } from '@tauri-apps/api/app';
 import { api } from './lib/api';
 import { ORB_SIZE, type AlertMoment, type AppConfig, type Effect, type MediaSize, type SecretKey, type SecretStatus } from './lib/types';
 import { ACCENT_PRESETS, DEFAULT_ACCENT, derivePalette, normalizeHex } from './lib/palette';
-import { isDirty, liveSaveConfig, reconcileSaved } from './lib/settings-dirty';
 import { comboFromEvent, prettyCombo } from './lib/shortcuts';
 import { ProviderLogo } from './components/ProviderLogo';
 import quorbLogo from './assets/quorb-logo.png';
@@ -332,10 +331,11 @@ const EFFECT_OPTIONS: { value: Effect; label: string }[] = [
   { value: 'none', label: 'Ninguno' },
 ];
 
-async function testEffect(kind: Effect, moment: AlertMoment, alerts: AppConfig['alerts'], persist: (alerts: AppConfig['alerts']) => Promise<void>) {
+async function testEffect(kind: Effect, moment: AlertMoment, alerts: AppConfig['alerts']) {
   if (kind === 'none') return;
   // El archivo del efecto propio se lee de la config guardada: guardamos antes lo que haya en el formulario.
-  await persist(alerts);
+  const current = await api.getConfig();
+  await api.saveConfig({ ...current, alerts });
   const m = await currentMonitor();
   if (!m) return;
   await api.playEffect(kind, moment, { x: m.position.x, y: m.position.y, width: m.size.width, height: m.size.height });
@@ -353,7 +353,6 @@ function MomentEffect({
   alerts,
   onEffect,
   onMedia,
-  onPersist,
   onError,
 }: {
   moment: AlertMoment;
@@ -362,7 +361,6 @@ function MomentEffect({
   alerts: AppConfig['alerts'];
   onEffect: (e: Effect) => void;
   onMedia: (p: string | null) => void;
-  onPersist: (alerts: AppConfig['alerts']) => Promise<void>;
   onError: (msg: string) => void;
 }) {
   return (
@@ -381,7 +379,7 @@ function MomentEffect({
         <button
           className="eg-btn eg-btn--ghost"
           disabled={effect === 'none' || (effect === 'custom' && !media)}
-          onClick={() => testEffect(effect, moment, alerts, onPersist).catch((e) => onError(String(e)))}
+          onClick={() => testEffect(effect, moment, alerts).catch((e) => onError(String(e)))}
         >
           Probar
         </button>
@@ -552,11 +550,9 @@ function loadTab(): ProviderTab {
 
 export function Settings() {
   const [cfg, setCfg] = useState<AppConfig | null>(null);
-  const [baseline, setBaseline] = useState<AppConfig | null>(null);
   const [secrets, setSecrets] = useState<SecretStatus>({});
   const [autostart, setAutostart] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<ProviderTab>(loadTab);
   const selectTab = (t: ProviderTab) => {
     setTab(t);
@@ -580,45 +576,17 @@ export function Settings() {
   const [shortcutErrors, setShortcutErrors] = useState<string[]>([]);
   const sizeTimer = useRef<number | undefined>(undefined);
   const pendingLive = useRef<Partial<AppConfig>>({});
-  const writeChain = useRef<Promise<unknown>>(Promise.resolve());
-
-  // Cola de escrituras de config de Ajustes: el guardado inmediato y el completo
-  // no se pisan a medias y la base solo avanza con lo que confirma el backend.
-  const enqueueSave = useCallback((build: () => AppConfig | Promise<AppConfig>): Promise<AppConfig> => {
-    const run = writeChain.current.then(async () => {
-      const savedCfg = await api.saveConfig(await build());
-      setBaseline(savedCfg);
-      return savedCfg;
-    });
-    writeChain.current = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
-  }, []);
-
-  // La prueba de un efecto guarda antes los avisos del formulario: pasa por la
-  // misma cola para que la base canónica no quede desincronizada del backend.
-  const persistAlerts = (alerts: AppConfig['alerts']) =>
-    enqueueSave(() => api.getConfig().then((current) => ({ ...current, alerts }))).then(() => undefined);
 
   const loadSecrets = () => api.secretStatus().then(setSecrets).catch(console.error);
 
   useEffect(() => {
-    api.getConfig()
-      .then((c) => {
-        setCfg(c);
-        setBaseline(c);
-      })
-      .catch(console.error);
+    api.getConfig().then(setCfg).catch(console.error);
     loadSecrets();
     api.shortcutErrors().then(setShortcutErrors).catch(() => {});
     isEnabled().then(setAutostart).catch(() => setAutostart(false));
   }, []);
 
   if (!cfg) return <div className="q-settings" />;
-
-  const dirty = isDirty(baseline, cfg);
 
   const set = <K extends keyof AppConfig>(key: K, patch: Partial<AppConfig[K]> | AppConfig[K]) =>
     setCfg((c) =>
@@ -636,34 +604,29 @@ export function Settings() {
     setCfg((c) => (c ? { ...c, ...patch } : c));
     pendingLive.current = { ...pendingLive.current, ...patch };
     window.clearTimeout(sizeTimer.current);
-    sizeTimer.current = window.setTimeout(() => {
+    sizeTimer.current = window.setTimeout(async () => {
       const toSave = pendingLive.current;
       pendingLive.current = {};
-      // Parte de la config persistida, no del borrador: así no arrastra otros
-      // cambios sin guardar ni pierde escrituras anteriores encadenadas.
-      enqueueSave(() => api.getConfig().then((current) => liveSaveConfig(current, toSave))).catch((e) => setSaved(String(e)));
+      try {
+        const current = await api.getConfig();
+        await api.saveConfig({ ...current, ...toSave });
+      } catch (e) {
+        setSaved(String(e));
+      }
     }, 120);
   };
   const changeOrbSize = (v: number) => liveSave({ orbSize: v });
   const changeAccent = (hex: string) => liveSave({ accentColor: normalizeHex(hex) });
 
   const save = async () => {
-    if (saving) return;
-    const snapshot = cfg; // lo que se envía; puede quedar obsoleto durante el await
-    setSaving(true);
     try {
-      const savedCfg = await enqueueSave(() => snapshot);
-      // No descartes ediciones hechas mientras se guardaba: adopta lo canónico
-      // del backend salvo en los campos que el usuario tocó después.
-      setCfg((latest) => (latest ? reconcileSaved(snapshot, savedCfg, latest) : savedCfg));
+      setCfg(await api.saveConfig(cfg));
       setShortcutErrors(await api.shortcutErrors().catch(() => []));
       setSaved('Guardado ✓');
     } catch (e) {
       setSaved(String(e));
-    } finally {
-      setSaving(false);
-      window.setTimeout(() => setSaved(null), 2500);
     }
+    window.setTimeout(() => setSaved(null), 2500);
   };
 
   const toggleAutostart = async (v: boolean) => {
@@ -1110,7 +1073,7 @@ export function Settings() {
                   <Field label="Avisar al llegar a" value={`${Math.round(cfg.alerts.threshold)} %`} hint="Una vez por ventana (sesión de 5 h, semana, mes…).">
                     <input type="range" min={50} max={100} step={1} value={cfg.alerts.threshold} style={rangeFill(cfg.alerts.threshold, 50, 100)} onChange={(e) => set('alerts', { threshold: Number(e.target.value) })} />
                   </Field>
-                  <MomentEffect moment="exceeded" effect={cfg.alerts.exceededEffect} media={cfg.alerts.exceededMedia} alerts={cfg.alerts} onEffect={(v) => set('alerts', { exceededEffect: v })} onMedia={(v) => set('alerts', { exceededMedia: v })} onPersist={persistAlerts} onError={setSaved} />
+                  <MomentEffect moment="exceeded" effect={cfg.alerts.exceededEffect} media={cfg.alerts.exceededMedia} alerts={cfg.alerts} onEffect={(v) => set('alerts', { exceededEffect: v })} onMedia={(v) => set('alerts', { exceededMedia: v })} onError={setSaved} />
                 </div>
                 <div className="q-moment">
                   <h3>2 · Al reiniciarse</h3>
@@ -1118,7 +1081,7 @@ export function Settings() {
                     <Toggle label="Avisar cuando el límite superado se reinicia" hint="«Claude · Sesión 5 h: disponible de nuevo»" checked={cfg.alerts.onReset} onChange={(v) => set('alerts', { onReset: v })} />
                   </Rows>
                   {cfg.alerts.onReset && (
-                    <MomentEffect moment="reset" effect={cfg.alerts.resetEffect} media={cfg.alerts.resetMedia} alerts={cfg.alerts} onEffect={(v) => set('alerts', { resetEffect: v })} onMedia={(v) => set('alerts', { resetMedia: v })} onPersist={persistAlerts} onError={setSaved} />
+                    <MomentEffect moment="reset" effect={cfg.alerts.resetEffect} media={cfg.alerts.resetMedia} alerts={cfg.alerts} onEffect={(v) => set('alerts', { resetEffect: v })} onMedia={(v) => set('alerts', { resetMedia: v })} onError={setSaved} />
                   )}
                 </div>
               </Section>
@@ -1197,8 +1160,8 @@ export function Settings() {
           <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={() => getCurrentWindow().close()}>
             Cerrar
           </button>
-          <button type="button" className="eg-btn eg-btn--primary eg-btn--sm" onClick={save} disabled={!dirty || saving}>
-            {saving ? 'Guardando…' : 'Guardar cambios'}
+          <button type="button" className="eg-btn eg-btn--primary eg-btn--sm" onClick={save}>
+            Guardar cambios
           </button>
         </footer>
       </main>
