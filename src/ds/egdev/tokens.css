@@ -1,4 +1,4 @@
-/* EGDEV Foundation · tokens.css — generado desde tokens.json (v2, Material v2). */
+/* EGDEV Foundation · tokens.css — generado desde tokens.json (2, Grafito, 9 oct 2026). No editar a mano. */
 :root{
   --color-primitive-black:#000000;
   --color-primitive-neutral-950:#0A0A0A;
@@ -23,17 +23,18 @@
   --color-alpha-red-65:rgba(255, 0, 54, 0.65);
   --color-alpha-black-25:rgba(0, 0, 0, 0.25);
   --color-alpha-black-42:rgba(0, 0, 0, 0.42);
-  --color-bg-canvas:var(--color-primitive-black);
+  --color-bg-canvas:var(--color-primitive-graphite-950);
+  --color-bg-scrim:var(--color-primitive-black);
   --color-bg-surface:var(--color-surface-1);
   --color-bg-glass:var(--color-alpha-white-08);
   --color-bg-brand-subtle:var(--color-alpha-red-10);
   --color-bg-brand-hover:var(--color-alpha-red-18);
   --color-fg-default:var(--color-primitive-white);
   --color-fg-secondary:var(--color-primitive-neutral-200);
-  --color-fg-muted:var(--color-primitive-neutral-500);
+  --color-fg-muted:var(--color-primitive-graphite-400);
   --color-fg-brand-default:var(--color-primitive-red-neon);
   --color-fg-brand-hover:var(--color-primitive-red-light);
-  --color-border-default:var(--color-primitive-neutral-900);
+  --color-border-default:var(--color-primitive-graphite-800);
   --color-border-subtle:var(--color-alpha-white-07);
   --color-border-brand:var(--color-alpha-red-45);
   --color-action-primary-bg-default:var(--color-alpha-red-12);
@@ -43,16 +44,16 @@
   --color-primitive-neutral-600:#6B6B6B;
   --color-primitive-red-200:#FF8FA6;
   --color-primitive-red-950:#1F0006;
-  --color-border-control:var(--color-primitive-neutral-600);
+  --color-border-control:var(--color-primitive-graphite-500);
   --color-border-brand-strong:var(--color-primitive-red-dark);
   --color-action-primary-solid-bg:var(--color-primitive-red-neon);
   --color-action-primary-solid-fg:var(--color-primitive-black);
-  --color-fg-brand-raised:var(--color-primitive-red-light);
+  --color-fg-brand-raised:var(--color-primitive-red-300);
   --color-focus-ring-inverse:var(--color-primitive-white);
   --color-status-success:#2DE2C4;
   --color-status-warning:#FFB224;
   --color-status-info:#8AB4FF;
-  --color-status-danger:var(--color-primitive-red-light);
+  --color-status-danger:var(--color-primitive-red-300);
   --color-fg-on-status:var(--color-primitive-black);
   --color-alpha-red-22:rgba(255, 0, 54, 0.22);
   --color-action-primary-solid-bg-hover:var(--color-primitive-red-light);
@@ -65,16 +66,21 @@
   --color-ambient-line-glow:#4d000d;
   --color-ambient-square:#e6001a;
   --color-ambient-square-glow:#ff2244;
-  --color-surface-0:var(--color-primitive-black);
-  --color-surface-1:#0C0C0E;
-  --color-surface-2:#141417;
-  --color-surface-3:#1D1D21;
-  --color-surface-overlay:rgba(20, 20, 24, 0.74);
+  --color-primitive-graphite-950:#141518;
+  --color-primitive-graphite-900:#1B1C20;
+  --color-primitive-graphite-850:#232428;
+  --color-primitive-graphite-800:#2A2B30;
+  --color-primitive-graphite-750:#2D2E33;
+  --color-primitive-graphite-500:#7A7B81;
+  --color-primitive-graphite-400:#A1A2A8;
+  --color-primitive-red-300:#FF6680;
+  --color-surface-0:var(--color-primitive-graphite-950);
+  --color-surface-1:var(--color-primitive-graphite-900);
+  --color-surface-2:var(--color-primitive-graphite-850);
+  --color-surface-3:var(--color-primitive-graphite-750);
+  --color-surface-overlay:rgba(35, 36, 40, 0.84);
   --color-border-hairline:rgba(255, 255, 255, 0.08);
   --color-border-hairline-strong:rgba(255, 255, 255, 0.14);
-  --font-display:"Barlow Condensed", "Arial Narrow", sans-serif;
-  --font-sans:"Barlow", system-ui, sans-serif;
-  --font-mono:"JetBrains Mono", ui-monospace, monospace;
   --space-0:0px;
   --space-1:4px;
   --space-2:8px;
@@ -101,7 +107,7 @@
   --shadow-glow-active:0 8px 30px 0 rgba(255, 0, 54, 0.30);
   --shadow-glow-intense:0 0 22px 4px rgba(255, 0, 54, 0.65), 0 0 55px 8px rgba(255, 0, 54, 0.28);
   --shadow-cta-hover:0 0 16px 4px rgba(255, 0, 54, 0.35), 0 0 45px 10px rgba(255, 0, 54, 0.15), inset 0 0 16px 0 rgba(255, 0, 54, 0.08);
-  --shadow-focus:0 0 0 2px #000000, 0 0 0 4px #FF0036;
+  --shadow-focus:0 0 0 2px #141518, 0 0 0 4px #FF0036;
   --shadow-card:0 0 0 1px rgba(255, 0, 54, 0.12), 0 8px 40px 0 rgba(255, 0, 54, 0.12), inset 0 0 16px 0 rgba(255, 0, 54, 0.08);
   --shadow-glow-hot:0 0 4px 1px rgba(255, 255, 255, 0.85), 0 0 18px 4px rgba(255, 0, 54, 0.75), 0 0 60px 12px rgba(255, 0, 54, 0.35);
   --shadow-edge:inset 0 1px 0 rgba(255, 255, 255, 0.07);
@@ -109,7 +115,7 @@
   --shadow-elev-1:0 1px 2px rgba(0, 0, 0, 0.7), 0 4px 14px -2px rgba(0, 0, 0, 0.55);
   --shadow-elev-2:0 2px 4px rgba(0, 0, 0, 0.7), 0 14px 36px -6px rgba(0, 0, 0, 0.75);
   --shadow-elev-3:0 4px 10px rgba(0, 0, 0, 0.7), 0 28px 70px -10px rgba(0, 0, 0, 0.9);
-  --shadow-well:inset 0 1px 2px rgba(0, 0, 0, 0.8), inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+  --shadow-well:inset 0 1px 2px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.28);
   --shadow-ring-brand:0 0 0 3px rgba(255, 0, 54, 0.22);
   --shadow-btn-primary:inset 0 1px 0 rgba(255, 255, 255, 0.38), inset 0 -1px 0 rgba(0, 0, 0, 0.28), 0 1px 2px rgba(0, 0, 0, 0.6), 0 8px 22px -8px rgba(255, 0, 54, 0.7);
   --shadow-btn-primary-hover:inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -1px 0 rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 0, 54, 0.35), 0 10px 30px -6px rgba(255, 0, 54, 0.75);
@@ -159,4 +165,7 @@
   --gradient-post-new:linear-gradient(180deg, rgba(255, 0, 54, 0.11), rgba(255, 0, 54, 0.03) 60%);
   --gradient-progress:linear-gradient(180deg, #FF4A6E, #FF0036 60%, #D9002D);
   --gradient-hot:radial-gradient(120% 80% at 85% -10%, rgba(255, 0, 54, 0.26), transparent 55%), linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 40%), #0E0709;
+  --font-display:"Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-sans:"Barlow", system-ui, sans-serif;
+  --font-mono:"JetBrains Mono", ui-monospace, monospace;
 }
