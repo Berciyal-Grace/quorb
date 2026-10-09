@@ -10,7 +10,7 @@ import { detectAlerts, effectFor, notificationText, type AlertMemory } from './l
 import { applyOrder, dropIndex, moveTo } from './lib/order';
 import { contains, isEdge, isVertical, nearestEdge, panelHeightLimit, stripRect, type Edge, type Rect } from './lib/dock';
 import { ORB_SIZE, type AppConfig, type UsageReport } from './lib/types';
-import { checkForUpdate, installUpdate, shouldNotifyUpdate, updateErrorText, UPDATE_EVERY_MS, UPDATE_FIRST_DELAY_MS, type UpdatePhase } from './lib/updater';
+import { checkForUpdate, emitUpdateAvailable, installUpdate, shouldNotifyUpdate, updateErrorText, UPDATE_EVERY_MS, UPDATE_FIRST_DELAY_MS, type UpdatePhase } from './lib/updater';
 import { retryWithBackoff, STARTUP_RETRY, USAGE_RETRY } from './lib/startup';
 import { DETAIL_EVENTS, DETAIL_WINDOW, isCurrentDetailInteraction, type DetailInteraction, type DetailState } from './lib/detail-panel';
 import { ProviderGauge } from './components/ProviderGauge';
@@ -339,6 +339,8 @@ export function Widget() {
           return;
         }
         setUpdate((u) => (u.phase === 'installing' ? u : { phase: 'available', info }));
+        // Ajustes puede estar abierto: comparte el hallazgo aunque el aviso nativo ya se haya visto.
+        void emitUpdateAvailable(info);
         let store: Storage | null = null;
         try {
           store = localStorage;

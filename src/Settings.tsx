@@ -11,7 +11,7 @@ import { isDirty, liveSaveConfig, reconcileSaved } from './lib/settings-dirty';
 import { comboFromEvent, prettyCombo } from './lib/shortcuts';
 import { ProviderLogo } from './components/ProviderLogo';
 import quorbLogo from './assets/quorb-logo.png';
-import { checkForUpdate, installUpdate, updateErrorText, type UpdatePhase } from './lib/updater';
+import { useUpdater } from './lib/useUpdater';
 
 const LINKS = {
   anthropicAdmin: 'https://console.anthropic.com/settings/admin-keys',
@@ -39,30 +39,10 @@ function Section({ title, kicker, id, children }: { title: string; kicker?: stri
 
 function UpdatesSection({ auto, onAuto }: { auto: boolean; onAuto: (v: boolean) => void }) {
   const [version, setVersion] = useState<string>('');
-  const [state, setState] = useState<UpdatePhase>({ phase: 'idle' });
+  const { state, check, install } = useUpdater(auto);
   useEffect(() => {
     getVersion().then(setVersion).catch(() => setVersion('?'));
   }, []);
-
-  const checkNow = async () => {
-    setState({ phase: 'checking' });
-    try {
-      const info = await checkForUpdate();
-      setState(info ? { phase: 'available', info } : { phase: 'none', checkedAt: Date.now() });
-    } catch (e) {
-      setState({ phase: 'error', message: updateErrorText(e) });
-    }
-  };
-  const install = async () => {
-    if (state.phase !== 'available') return;
-    const info = state.info;
-    setState({ phase: 'installing', info, progress: null });
-    try {
-      await installUpdate((progress) => setState({ phase: 'installing', info, progress }));
-    } catch (e) {
-      setState({ phase: 'error', message: updateErrorText(e) });
-    }
-  };
 
   return (
     <Section title="Versión instalada">
@@ -95,7 +75,7 @@ function UpdatesSection({ auto, onAuto }: { auto: boolean; onAuto: (v: boolean) 
           Quorb <b>{version ? `v${version}` : ''}</b>
           {state.phase === 'none' && ' · estás en la última versión'}
         </span>
-        <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" disabled={state.phase === 'checking' || state.phase === 'installing'} onClick={checkNow}>
+        <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" disabled={state.phase === 'checking' || state.phase === 'installing'} onClick={() => check()}>
           {state.phase === 'checking' ? 'Buscando…' : 'Buscar ahora'}
         </button>
       </div>

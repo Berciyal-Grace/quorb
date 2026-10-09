@@ -1,4 +1,5 @@
 // Actualizaciones desde GitHub Releases (tauri-plugin-updater, firmadas con minisign).
+import { emit } from '@tauri-apps/api/event';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 
@@ -20,6 +21,20 @@ export type UpdatePhase =
   | { phase: 'available'; info: UpdateInfo }
   | { phase: 'installing'; info: UpdateInfo; progress: number | null }
   | { phase: 'error'; message: string };
+
+/** Canales con los que la tira comparte lo que descubre con Ajustes. */
+export const UPDATE_EVENTS = {
+  available: 'quorb://update-available',
+} as const;
+
+/** Avisa de una versión nueva sin que un fallo de emisión rompa el sondeo ni el estado local. */
+export async function emitUpdateAvailable(info: UpdateInfo): Promise<void> {
+  try {
+    await emit(UPDATE_EVENTS.available, info);
+  } catch {
+    /* la ventana receptora puede no estar abierta */
+  }
+}
 
 let pending: Update | null = null;
 
