@@ -1,7 +1,7 @@
 {
   "name": "quorb",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Edge-docked usage rings for Claude, Codex, Gemini, Cursor, Copilot, OpenRouter and NaN Builders on Windows.",
   "license": "MIT",
   "type": "module",
@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --dir src && node --test scripts/bump.test.mjs scripts/release-check.test.mjs scripts/setup-signing.test.mjs",
     "tauri": "tauri",
     "app:dev": "tauri dev",
     "app:build": "tauri build",

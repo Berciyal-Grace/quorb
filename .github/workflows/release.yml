@@ -1,0 +1,132 @@
+# Release manual y firmada de Quorb.
+#
+# NO se dispara con push ni con tags: solo `workflow_dispatch` desde `main`.
+# Inputs: `version` (SemVer estable) y `source_sha` (40 hex de un commit ya
+# presente en `origin/main`). El preflight valida inputs, ancestro, versiones,
+# notas, colisión de tag y clave pública del updater ANTES de tocar secretos.
+# El job produce un BORRADOR de release; nada se publica hasta que lo revises.
+# El instalador queda sin firma Authenticode (no configurada); solo la
+# actualización del updater va firmada con minisign.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versión estable a publicar (SemVer, p. ej. 0.1.1)'
+        required: true
+        type: string
+      source_sha:
+        description: 'SHA completo (40 hex) del commit a publicar, ancestro de main'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-windows
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Solo desde main; si se elige otra rama en la UI, el job se omite.
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    # `contents: write` es lo mínimo para que tauri-action cree el tag y el borrador.
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout de main con historial y tags completos
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Preflight (inputs, ancestro, versiones, notas, tag y clave)
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: node scripts/release-check.mjs
+
+      - name: Checkout de la fuente ya validada
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          toolchain: stable
+
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Dependencias del frontend (lockfile estricto)
+        run: npm ci
+
+      - name: Tests de frontend, scripts y Rust
+        run: |
+          npm test
+          cd src-tauri
+          cargo test --locked
+
+      - name: Build del frontend
+        run: npm run build
+
+      - name: Comprobar el secreto de firma (falla visible si falta la clave)
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+            echo "::error::Falta el secreto TAURI_SIGNING_PRIVATE_KEY; no se puede firmar la release."
+            exit 1
+          fi
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ]; then
+            echo "::notice::TAURI_SIGNING_PRIVATE_KEY_PASSWORD vacío: se asume una clave sin cifrar. Los valores nunca se imprimen."
+          else
+            echo "Clave y contraseña de firma presentes; sus valores nunca se imprimen. La verificación real de la firma la hace el build."
+          fi
+
+      - name: Cargar notas bilingües del commit validado
+        id: notes
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          import { randomUUID } from 'node:crypto';
+          const file = `docs/releases/v${process.env.RELEASE_VERSION}.md`;
+          const body = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+          const marker = `QUORB_NOTES_${randomUUID()}`;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `body<<${marker}\n${body}\n${marker}\n`);
+          NODE
+
+      - name: Compilar, firmar y crear el borrador de release
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          # El tag se crea desde el SHA validado, no desde el ref que lanza el job.
+          releaseCommitish: ${{ inputs.source_sha }}
+          tagName: v${{ inputs.version }}
+          releaseName: Quorb v${{ inputs.version }}
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: true
+          args: --config src-tauri/tauri.release.conf.json
