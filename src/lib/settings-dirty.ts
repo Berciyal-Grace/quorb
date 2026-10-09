@@ -45,6 +45,21 @@ export function isDirty(baseline: AppConfig | null, draft: AppConfig | null): bo
 }
 
 /**
+ * Suciedad combinada de Ajustes: cambios manuales de config (los campos vivos
+ * no cuentan) o un borrador de autostart distinto de la base confirmada por el
+ * sistema. Mientras la base de autostart es desconocida no se considera sucio.
+ */
+export function isSettingsDirty(
+  cfgBaseline: AppConfig | null,
+  cfgDraft: AppConfig | null,
+  autostartConfirmed: boolean | null,
+  autostartDraft: boolean | null,
+): boolean {
+  if (isDirty(cfgBaseline, cfgDraft)) return true;
+  return autostartConfirmed !== null && autostartDraft !== null && autostartDraft !== autostartConfirmed;
+}
+
+/**
  * Config a persistir en un guardado inmediato: base persistida + solo el campo
  * vivo. Así un cambio vivo no pisa escrituras previas ni ensucia otros campos.
  */
