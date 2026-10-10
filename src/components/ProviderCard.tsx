@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { UsageReport } from '../lib/types';
 import { formatMoney } from '../lib/format';
 import { MeterBar } from './MeterBar';
@@ -13,15 +14,27 @@ const STATUS: Record<UsageReport['status'], { label: string; tone: 'success' | '
 };
 
 function ActionButton({ report }: { report: UsageReport }) {
+  // Si no se puede abrir el login (p. ej. falta el CLI), se explica aquí mismo.
+  const [error, setError] = useState<string | null>(null);
   if (report.action === 'login') {
     return (
-      <button
-        className="eg-btn eg-btn--primary eg-btn--sm"
-        title={report.stale ? 'Abre el CLI oficial, que renueva la sesión; el widget se actualiza solo al terminar' : undefined}
-        onClick={() => api.openLogin(report.id).catch(console.error)}
-      >
-        {report.stale ? 'Renovar sesión' : 'Iniciar sesión'}
-      </button>
+      <>
+        <button
+          className="eg-btn eg-btn--primary eg-btn--sm"
+          title={report.stale ? 'Abre el CLI oficial, que renueva la sesión; el widget se actualiza solo al terminar' : undefined}
+          onClick={() => {
+            setError(null);
+            api.openLogin(report.id).catch((e) => setError(String(e)));
+          }}
+        >
+          {report.stale ? 'Renovar sesión' : 'Iniciar sesión'}
+        </button>
+        {error && (
+          <div className="eg-notice eg-notice--sm eg-notice--warning" role="alert">
+            <span className="eg-notice__text">{error}</span>
+          </div>
+        )}
+      </>
     );
   }
   if (report.action === 'settings') {

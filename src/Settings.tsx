@@ -5,8 +5,8 @@ import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { getVersion } from '@tauri-apps/api/app';
 import { api } from './lib/api';
-import { ORB_SIZE, type Account, type AccountProvider, type AlertMoment, type AppConfig, type Effect, type MediaSize, type ScopedSecretKey, type SecretKey, type SecretStatus } from './lib/types';
-import { ACCOUNT_SECRETS, SESSION_DIR, accountReady, accountsOf, defaultSessionDir, newAccount, secretKey } from './lib/accounts';
+import { ORB_SIZE, type Account, type AccountProvider, type AlertMoment, type AppConfig, type Effect, type MediaSize, type ScopedSecretKey, type SecretKey, type SecretStatus, type UsageReport } from './lib/types';
+import { ACCOUNT_SECRETS, CLI_INSTALL, SESSION_DIR, accountReady, accountsOf, defaultSessionDir, newAccount, secretKey } from './lib/accounts';
 import { ACCENT_PRESETS, DEFAULT_ACCENT, derivePalette, normalizeHex } from './lib/palette';
 import { isDirty, isSettingsDirty, liveSaveConfig, reconcileSaved } from './lib/settings-dirty';
 import { createAutostartController } from './lib/autostart-controller';
@@ -16,6 +16,7 @@ import { comboFromEvent, prettyCombo } from './lib/shortcuts';
 import { ProviderLogo } from './components/ProviderLogo';
 import quorbLogo from './assets/quorb-logo.png';
 import { useUpdater } from './lib/useUpdater';
+import { formatMoney, formatPercent, peakMeter } from './lib/format';
 
 const LINKS = {
   anthropicAdmin: 'https://console.anthropic.com/settings/admin-keys',
@@ -503,6 +504,151 @@ function AccountEditor({
   useEffect(() => {
     if (!session || !persisted) {
       setSessionFileFound(false);
+/** Aviso de que falta el CLI con el que se inicia sesión, con la orden para instalarlo. */
+function CliMissing({ provider }: { provider: AccountProvider }) {
+  const how = CLI_INSTALL[provider];
+  const [copied, setCopied] = useState(false);
+  if (!how) return null;
+  const copy = () =>
+    navigator.clipboard
+      .writeText(how.cmd)
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => {});
+  return (
+    <div className="eg-notice eg-notice--sm eg-notice--warning q-cli" role="status">
+      <span className="eg-notice__text">
+        <b>Falta {how.name} en este equipo.</b> Quorb inicia sesión con su login oficial. Instálalo desde {how.where}
+        {how.needs ? ` (necesita ${how.needs})` : ''}; Quorb lo detecta solo al terminar.
+      </span>
+      <span className="q-cli__cmd">
+        <code>{how.cmd}</code>
+        <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={copy}>
+          {copied ? 'Copiado' : 'Copiar'}
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/** Lo que necesita el paso de comprobación: lo guardado, las claves y si hay cambios sin guardar. */
+type HealthProps = {
+  /** Config guardada: cuando cambia (al guardar) se vuelve a comprobar. */
+  saved: unknown;
+  /** Estado de las claves del Administrador de credenciales. */
+  secretsSig: string;
+  /** Hay cambios sin guardar en esta cuenta: se comprueba lo guardado. */
+  dirty: boolean;
+  /** Oculta en el widget (se comprueba igual). */
+  hidden: boolean;
+  onSave: () => Promise<void>;
+};
+
+type Health = { phase: 'checking' } | { phase: 'done'; report: UsageReport | null } | { phase: 'failed'; error: string };
+
+function healthSummary(r: UsageReport): string {
+  const peak = peakMeter(r);
+  const data =
+    peak?.percent != null
+      ? `${peak.label} al ${formatPercent(peak.percent)}`
+      : r.spend
+        ? `${r.spend.periodLabel}: ${formatMoney(r.spend.amount, r.spend.currency)}`
+        : 'Datos recibidos';
+  return r.plan ? `${r.plan} · ${data}` : data;
+}
+
+/**
+ * Último paso de cada proveedor y cuenta: consulta la cuenta con lo guardado y dice si
+ * funciona y, si no, por qué (sesión caducada, clave rechazada, falta un dato…).
+ */
+function HealthStep({ id, saved, secretsSig, dirty, hidden, onSave, refreshKey }: HealthProps & { id: string; refreshKey?: unknown }) {
+  const [h, setH] = useState<Health>({ phase: 'checking' });
+  const [busy, setBusy] = useState(false);
+  const seq = useRef(0);
+  const run = useCallback(() => {
+    const n = ++seq.current;
+    setH({ phase: 'checking' });
+    api
+      .checkProvider(id)
+      .then((report) => n === seq.current && setH({ phase: 'done', report }))
+      .catch((e) => n === seq.current && setH({ phase: 'failed', error: String(e) }));
+  }, [id]);
+  // Al abrir, al guardar, al cambiar una clave o al aparecer la sesión del CLI.
+  useEffect(() => {
+    const t = window.setTimeout(run, 300);
+    return () => window.clearTimeout(t);
+  }, [run, saved, secretsSig, refreshKey]);
+
+  const r = h.phase === 'done' ? h.report : null;
+  const hasData = !!r && (r.meters.length > 0 || !!r.spend);
+  const state =
+    h.phase === 'checking'
+      ? 'checking'
+      : h.phase === 'failed'
+        ? 'error'
+        : !r || r.status === 'unconfigured'
+          ? 'todo'
+          : r.status === 'ok' || (r.status === 'warning' && hasData)
+            ? 'ok'
+            : r.status === 'error'
+              ? 'error'
+              : 'warn';
+  const title = {
+    checking: 'Comprobando la conexión…',
+    ok: 'Funciona',
+    todo: 'Falta completar un paso',
+    warn: r?.status === 'needsLogin' ? 'Sin sesión' : 'Atención',
+    error: 'No funciona',
+  }[state];
+  const message = h.phase === 'failed' ? h.error : !r ? 'Guarda los cambios para comprobar esta cuenta.' : r.message;
+
+  return (
+    <li data-done={state === 'ok' || undefined} data-state={state} aria-live="polite">
+      <b>{title}</b>
+      {state === 'ok' && r && (
+        <span>
+          {healthSummary(r)}
+          {hidden && ' · oculta en el widget'}
+        </span>
+      )}
+      {state === 'checking' && <span>Consultando con lo guardado…</span>}
+      {message && state !== 'checking' && (
+        <span className={`eg-notice eg-notice--sm eg-notice--${state === 'ok' ? 'info' : state === 'error' ? 'danger' : 'warning'} q-steps__notice`} role={state === 'ok' ? undefined : 'alert'}>
+          <span className="eg-notice__text">{message}</span>
+        </span>
+      )}
+      {dirty && <span className="q-note">Tienes cambios sin guardar: la comprobación usa lo guardado.</span>}
+      <span className="q-steps__actions">
+        {dirty ? (
+          <button
+            type="button"
+            className="eg-btn eg-btn--secondary eg-btn--sm"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              onSave().finally(() => setBusy(false));
+            }}
+          >
+            Guardar y comprobar
+          </button>
+        ) : (
+          <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" disabled={state === 'checking'} onClick={run}>
+            Comprobar ahora
+          </button>
+        )}
+      </span>
+    </li>
+  );
+}
+
+/** ¿Hay sesión del CLI para esta cuenta? Se mira cada 3 s mientras está abierta. */
+function useCliSession(id: string, active: boolean): boolean {
+  const [connected, setConnected] = useState(false);
+  useEffect(() => {
+    if (!active) {
+      setConnected(false);
       return;
     }
     let alive = true;
@@ -510,6 +656,8 @@ function AccountEditor({
       api
         .accountSessionFileExists(a.id)
         .then((v) => alive && setSessionFileFound(v))
+        .accountSession(id)
+        .then((v) => alive && setConnected(v))
         .catch(() => {});
     check();
     const t = window.setInterval(check, 3000);
@@ -517,18 +665,134 @@ function AccountEditor({
       alive = false;
       window.clearInterval(t);
     };
-  }, [a.id, persisted, session]);
+  }, [id, active]);
+  return connected;
+}
+
+/**
+ * Pasos de una cuenta con login por CLI (Claude Code, Codex, Gemini), principal o
+ * adicional: instalar el CLI si falta, iniciar sesión y comprobar que funciona.
+ */
+function CliConnect({
+  id,
+  provider,
+  loginCommand,
+  cliMissing,
+  persisted,
+  extra,
+  health,
+}: {
+  id: string;
+  provider: AccountProvider;
+  loginCommand: string;
+  cliMissing: boolean;
+  /** Guardada tal cual (el login la busca en la config guardada). */
+  persisted: boolean;
+  /** Cuenta adicional (no la principal). */
+  extra: boolean;
+  health: HealthProps;
+}) {
+  const connected = useCliSession(id, persisted);
+  const [busy, setBusy] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const connect = async () => {
     setBusy(true);
+    setLoginError(null);
     try {
       // Si la cuenta no está persistida, guarda antes; sin confirmación no abre.
       await openAccountLogin(persisted, { save: onSave, open: () => api.openLogin(a.id) });
+      if (!persisted || health.dirty) await health.onSave();
+      await api.openLogin(id);
     } catch (e) {
-      onError(String(e));
+      // Se queda en el paso hasta el siguiente intento.
+      setLoginError(String(e));
     } finally {
       setBusy(false);
     }
   };
+  return (
+    <>
+      {cliMissing && (
+        <li>
+          <b>Instala {CLI_INSTALL[provider]?.name ?? 'su CLI'}</b>
+          <span>Hace falta para iniciar sesión y para renovarla cuando caduque, aunque ahora funcione.</span>
+          <CliMissing provider={provider} />
+        </li>
+      )}
+      <li data-done={connected || undefined}>
+        <b>{extra ? 'Inicia sesión con la otra cuenta' : connected ? 'Sesión iniciada' : 'Inicia sesión'}</b>
+        <span>
+          Se abre una terminal con <code>{loginCommand}</code>
+          {provider === 'claude' && <> (si no te lo pide, escribe <code>/login</code>)</>}
+          {provider === 'gemini' && <> (elige «Login with Google»)</>}. El navegador hace el login oficial y el CLI guarda la sesión, que
+          Quorb solo lee.
+          {extra && ' Entra con la cuenta que quieres añadir, no con la principal: si el navegador ya tiene abierta la principal, usa una ventana privada.'}
+        </span>
+        <span className="q-steps__actions">
+          <button className={`eg-btn ${connected ? 'eg-btn--secondary' : 'eg-btn--primary'}`} disabled={busy || cliMissing} onClick={connect}>
+            {connected ? 'Volver a iniciar sesión' : persisted && !health.dirty ? 'Iniciar sesión' : 'Guardar e iniciar sesión'}
+          </button>
+        </span>
+        {loginError && (
+          <span className="eg-notice eg-notice--sm eg-notice--warning q-steps__notice" role="alert">
+            <span className="eg-notice__text">{loginError}</span>
+          </span>
+        )}
+      </li>
+      {persisted ? (
+        <HealthStep id={id} {...health} refreshKey={connected} />
+      ) : (
+        <li>
+          <b>Comprobación</b>
+          <span>Se hace sola en cuanto guardes e inicies sesión.</span>
+        </li>
+      )}
+    </>
+  );
+}
+
+/** Configuración de una cuenta adicional: nombre, si se muestra y cómo se conecta, en pasos. */
+function AccountEditor({
+  account: a,
+  persisted,
+  secrets,
+  onChange,
+  onRemove,
+  onSecrets,
+  loginCommand,
+  cliMissing,
+  health,
+}: {
+  account: Account;
+  /** Ya está guardada tal cual en el backend (necesario para abrir su login y comprobarla). */
+  persisted: boolean;
+  /** Comando de login del proveedor (el de la cuenta principal). */
+  loginCommand: string;
+  /** El CLI de login no está instalado: se avisa con la orden para instalarlo. */
+  cliMissing: boolean;
+  health: HealthProps;
+  secrets: SecretStatus;
+  onChange: (patch: Partial<Account>) => void;
+  onRemove: () => void;
+  onSecrets: () => void;
+}) {
+  const key = (k: SecretKey) => secretKey(k, a.id);
+  const has = (k: SecretKey) => !!secrets[key(k)];
+  const session = SESSION_DIR[a.provider];
+  const adminKey: SecretKey = a.provider === 'anthropic_api' ? 'anthropic_admin_key' : 'openai_admin_key';
+  const check = persisted ? (
+    <HealthStep id={a.id} {...health} />
+  ) : (
+    <li>
+      <b>Comprobación</b>
+      <span>Guarda la cuenta para comprobar que funciona.</span>
+      <span className="q-steps__actions">
+        <button type="button" className="eg-btn eg-btn--secondary eg-btn--sm" onClick={() => health.onSave()}>
+          Guardar y comprobar
+        </button>
+      </span>
+    </li>
+  );
   return (
     <Section kicker="Cuenta adicional" title={a.label}>
       <div className="q-cols">
@@ -537,6 +801,126 @@ function AccountEditor({
         </Field>
       </div>
       <Toggle label="Mostrar en el widget" checked={a.enabled} onChange={(v) => onChange({ enabled: v })} />
+
+      <ol className="q-steps" aria-label="Cómo conectar esta cuenta">
+        <li data-done={a.label.trim() !== '' || undefined}>
+          <b>Ponle nombre</b>
+          <span>Arriba, para distinguirla de la principal en la tira (por ejemplo, «Trabajo»).</span>
+        </li>
+
+        {session && (
+          <CliConnect id={a.id} provider={a.provider} loginCommand={loginCommand} cliMissing={cliMissing} persisted={persisted} extra health={health} />
+        )}
+
+        {a.provider === 'cursor' && (
+          <>
+            <li data-done={has('cursor_token') || undefined}>
+              <b>Pega el token de esta cuenta</b>
+              <span>La app de Cursor guarda una sola sesión (la principal). Entra en cursor.com con esta cuenta y copia la cookie WorkosCursorSessionToken.</span>
+              <SecretInput id={key('cursor_token')} label="Token de la cuenta" configured={has('cursor_token')} onSaved={onSecrets} />
+            </li>
+            {check}
+          </>
+        )}
+
+        {a.provider === 'copilot' && (
+          <>
+            <li data-done={a.username.trim() !== '' || undefined}>
+              <b>Usuario y plan de GitHub</b>
+              <div className="q-cols">
+                <Field label="Usuario de GitHub">
+                  <input type="text" spellCheck={false} value={a.username} onChange={(e) => onChange({ username: e.target.value })} />
+                </Field>
+                <Field label="Plan">
+                  <select value={a.plan || 'pro'} onChange={(e) => onChange({ plan: e.target.value })}>
+                    <option value="free">Free · 50</option>
+                    <option value="pro">Pro · 300</option>
+                    <option value="pro_plus">Pro+ · 1500</option>
+                    <option value="business">Business · 300</option>
+                    <option value="enterprise">Enterprise · 1000</option>
+                    <option value="custom">Otra cantidad</option>
+                  </select>
+                </Field>
+              </div>
+              {a.plan === 'custom' && (
+                <Field label="Peticiones premium incluidas al mes">
+                  <input type="number" min={1} value={a.customAllowance ?? ''} onChange={(e) => onChange({ customAllowance: numOrNull(e.target.value) })} />
+                </Field>
+              )}
+            </li>
+            <li data-done={has('github_token') || undefined}>
+              <b>Token de solo lectura</b>
+              <SecretInput
+                id={key('github_token')}
+                label="Token de GitHub de esta cuenta (fine-grained)"
+                configured={has('github_token')}
+                onSaved={onSecrets}
+                hint={<>Créalo con esta cuenta en <Link href={LINKS.githubToken}>GitHub › Fine-grained tokens</Link> con el permiso «Plan» (solo lectura).</>}
+              />
+            </li>
+            {check}
+          </>
+        )}
+
+        {a.provider === 'nan' && (
+          <>
+            <li data-done={has('nan_session') || has('nan_api_key') || undefined}>
+              <b>Conecta la cuenta o pega una API key</b>
+              <NanConnect account={a.id} connected={has('nan_session')} onChange={onSecrets} />
+              <SecretInput id={key('nan_api_key')} label="API key (alternativa)" configured={has('nan_api_key')} onSaved={onSecrets} />
+            </li>
+            <li data-done>
+              <b>Plan</b>
+              <Field label="Plan" hint="La URL base y el resto de ajustes avanzados son los de la cuenta principal.">
+                <select value={a.plan || 'member'} onChange={(e) => onChange({ plan: e.target.value })}>
+                  <option value="community">nan_community</option>
+                  <option value="member">nan_member</option>
+                  <option value="premium">GLM Premium</option>
+                </select>
+              </Field>
+            </li>
+            {check}
+          </>
+        )}
+
+        {a.provider === 'openrouter' && (
+          <>
+            <li data-done={has('openrouter_api_key') || undefined}>
+              <b>API key</b>
+              <SecretInput
+                id={key('openrouter_api_key')}
+                label="API key"
+                configured={has('openrouter_api_key')}
+                onSaved={onSecrets}
+                hint={<>Puede ser de otra cuenta o de la misma con otro límite. <Link href={LINKS.openrouterKeys}>openrouter.ai › Keys</Link></>}
+              />
+            </li>
+            {check}
+          </>
+        )}
+
+        {(a.provider === 'anthropic_api' || a.provider === 'openai_api') && (
+          <>
+            <li data-done={has(adminKey) || undefined}>
+              <b>Admin key de esta organización</b>
+              <SecretInput
+                id={key(adminKey)}
+                label="Admin key"
+                configured={has(adminKey)}
+                onSaved={onSecrets}
+                hint={<>Cada organización tiene su propia <Link href={a.provider === 'anthropic_api' ? LINKS.anthropicAdmin : LINKS.openaiAdmin}>Admin key</Link>.</>}
+              />
+            </li>
+            <li data-done={a.monthlyBudgetUsd != null || undefined}>
+              <b>Presupuesto mensual (opcional)</b>
+              <Field label="USD al mes">
+                <input type="number" min={0} step="any" value={a.monthlyBudgetUsd ?? ''} onChange={(e) => onChange({ monthlyBudgetUsd: numOrNull(e.target.value) })} />
+              </Field>
+            </li>
+            {check}
+          </>
+        )}
+      </ol>
 
       {session && (
         <>
@@ -637,33 +1021,16 @@ function AccountEditor({
               <option value="member">nan_member</option>
               <option value="premium">GLM Premium</option>
             </select>
+        <details className="q-details">
+          <summary>Avanzado · carpeta de sesión</summary>
+          <p className="q-note">
+            Cada cuenta guarda su sesión en su propia carpeta, así no toca la principal: el login se abre con <code>{session.env}</code>{' '}
+            apuntando a ella. Quorb no renueva el token; si caduca, «Renovar sesión» vuelve a abrir el CLI.
+          </p>
+          <Field label="Carpeta de sesión" hint={<>Vacío = <code>{defaultSessionDir(a)}</code>. Puedes usar una que ya tengas. Quorb lee <code>{session.file}</code> dentro de ella.</>}>
+            <input type="text" spellCheck={false} value={a.configDir ?? ''} placeholder={defaultSessionDir(a)} onChange={(e) => onChange({ configDir: strOrNull(e.target.value) })} />
           </Field>
-        </>
-      )}
-
-      {a.provider === 'openrouter' && (
-        <SecretInput
-          id={key('openrouter_api_key')}
-          label="API key"
-          configured={!!secrets[key('openrouter_api_key')]}
-          onSaved={onSecrets}
-          hint={<>Puede ser de otra cuenta o de la misma con otro límite. <Link href={LINKS.openrouterKeys}>openrouter.ai › Keys</Link></>}
-        />
-      )}
-
-      {(a.provider === 'anthropic_api' || a.provider === 'openai_api') && (
-        <>
-          <SecretInput
-            id={key(a.provider === 'anthropic_api' ? 'anthropic_admin_key' : 'openai_admin_key')}
-            label="Admin key de esta organización"
-            configured={!!secrets[key(a.provider === 'anthropic_api' ? 'anthropic_admin_key' : 'openai_admin_key')]}
-            onSaved={onSecrets}
-            hint={<>Cada organización tiene su propia <Link href={a.provider === 'anthropic_api' ? LINKS.anthropicAdmin : LINKS.openaiAdmin}>Admin key</Link>.</>}
-          />
-          <Field label="Presupuesto mensual (USD, opcional)">
-            <input type="number" min={0} step="any" value={a.monthlyBudgetUsd ?? ''} onChange={(e) => onChange({ monthlyBudgetUsd: numOrNull(e.target.value) })} />
-          </Field>
-        </>
+        </details>
       )}
 
       <div className="q-inline">
@@ -675,6 +1042,19 @@ function AccountEditor({
     </Section>
   );
 }
+
+/** Clave de la config de la cuenta principal de cada proveedor. */
+const CONFIG_KEY: Record<string, keyof AppConfig> = {
+  claude: 'claude',
+  codex: 'codex',
+  gemini: 'gemini',
+  cursor: 'cursor',
+  copilot: 'copilot',
+  nan: 'nan',
+  openrouter: 'openrouter',
+  anthropic_api: 'anthropicApi',
+  openai_api: 'openaiApi',
+};
 
 const PROVIDER_TABS = [
   { id: 'claude', name: 'Claude', group: 'sub', desc: 'Pro / Max · sesión de 5 h, semanal y por modelo' },
@@ -773,6 +1153,25 @@ export function Settings() {
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [baseline, setBaseline] = useState<AppConfig | null>(null);
   const [secrets, setSecrets] = useState<SecretStatus>({});
+  // CLIs de login instalados (Claude Code, Codex, Gemini): se avisa antes de pulsar
+  // «Iniciar sesión» y se detecta solo cuando se instala (cada 5 s o al volver a la ventana).
+  const [cli, setCli] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    let alive = true;
+    const check = () =>
+      api
+        .cliStatus()
+        .then((st) => alive && setCli(st))
+        .catch(() => {});
+    check();
+    const t = window.setInterval(check, 5000);
+    window.addEventListener('focus', check);
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+      window.removeEventListener('focus', check);
+    };
+  }, []);
   const [autostartController] = useState(() => createAutostartController({ read: isEnabled, enable, disable }));
   const [autostartState, setAutostartState] = useState(() => autostartController.getState());
   const [autostartDraft, setAutostartDraft] = useState<boolean | null>(null);
@@ -1020,6 +1419,16 @@ export function Settings() {
   };
 
   const tabAccounts = accountsOf(cfg, tab);
+  // Paso de comprobación: se repite al guardar o al cambiar una clave, y avisa si
+  // hay cambios sin guardar en esa cuenta (se comprueba siempre lo guardado).
+  const secretsSig = JSON.stringify(secrets);
+  const sectionDirty = (id: string) => {
+    const acc = cfg.accounts.find((a) => a.id === id);
+    if (acc) return JSON.stringify(acc) !== JSON.stringify(baseline?.accounts.find((a) => a.id === id));
+    const k = CONFIG_KEY[id];
+    return !!k && JSON.stringify(cfg[k]) !== JSON.stringify(baseline?.[k]);
+  };
+  const healthFor = (id: string, hidden: boolean): HealthProps => ({ saved: baseline, secretsSig, dirty: sectionDirty(id), hidden, onSave: save });
   const selAccount = tabAccounts.find((a) => a.id === accountSel) ?? null;
   const addAccount = () => {
     const a = newAccount(cfg, tab as AccountProvider);
@@ -1260,6 +1669,8 @@ export function Settings() {
           onError={setSaved}
           onSave={save}
           saving={saving}
+          health={healthFor(selAccount.id, !selAccount.enabled)}
+          cliMissing={cli[selAccount.provider] === false}
           loginCommand={
             selAccount.provider === 'claude' || selAccount.provider === 'codex' || selAccount.provider === 'gemini'
               ? cfg[selAccount.provider].loginCommand
@@ -1270,137 +1681,128 @@ export function Settings() {
       {!selAccount && (
         <>
 
-      {tab === 'claude' && (
-        <Section kicker="Suscripción · OAuth" title="Claude (Pro / Max)">
-          <Toggle label="Mostrar en el widget" checked={cfg.claude.enabled} onChange={(v) => set('claude', { enabled: v })} />
-          <p className="q-note">
-            El login es el OAuth oficial de Claude Code: «Iniciar sesión» abre <code>claude</code> en una terminal y, si no hay sesión,
-            escribe <code>/login</code>. La app solo lee la sesión que guarda el CLI; no ve tu contraseña ni refresca tokens.
-          </p>
-          <Field label="Fichero de credenciales" hint={<>Vacío = <code>%USERPROFILE%\.claude\.credentials.json</code>. Para WSL: <code>\\wsl.localhost\Ubuntu\home\TU_USUARIO\.claude\.credentials.json</code></>}>
-            <input
-              type="text"
-              spellCheck={false}
-              value={cfg.claude.credentialsPath ?? ''}
-              onChange={(e) => set('claude', { credentialsPath: strOrNull(e.target.value) })}
-            />
-          </Field>
-          <div className="q-inline">
-            <Field label="Comando de login">
-              <input type="text" spellCheck={false} value={cfg.claude.loginCommand} onChange={(e) => set('claude', { loginCommand: e.target.value })} />
-            </Field>
-            <button className="eg-btn eg-btn--primary" onClick={() => api.openLogin('claude').catch((e) => setSaved(String(e)))}>
-              Iniciar sesión
-            </button>
-          </div>
-        </Section>
-      )}
-
-      {tab === 'codex' && (
-        <Section kicker="Suscripción · OAuth" title="ChatGPT (Plus / Pro · Codex)">
-          <Toggle label="Mostrar en el widget" checked={cfg.codex.enabled} onChange={(v) => set('codex', { enabled: v })} />
-          <p className="q-note">
-            «Iniciar sesión» ejecuta <code>codex login</code>, que abre el OAuth de OpenAI en el navegador. Los límites de 5 h y semanales
-            son los de tu plan de ChatGPT en Codex.
-          </p>
-          <Field label="Fichero auth.json" hint={<>Vacío = <code>%CODEX_HOME%</code> o <code>%USERPROFILE%\.codex\auth.json</code></>}>
-            <input
-              type="text"
-              spellCheck={false}
-              value={cfg.codex.credentialsPath ?? ''}
-              onChange={(e) => set('codex', { credentialsPath: strOrNull(e.target.value) })}
-            />
-          </Field>
-          <div className="q-inline">
-            <Field label="Comando de login">
-              <input type="text" spellCheck={false} value={cfg.codex.loginCommand} onChange={(e) => set('codex', { loginCommand: e.target.value })} />
-            </Field>
-            <button className="eg-btn eg-btn--primary" onClick={() => api.openLogin('codex').catch((e) => setSaved(String(e)))}>
-              Iniciar sesión
-            </button>
-          </div>
-        </Section>
-      )}
-
-      {tab === 'gemini' && (
-        <Section kicker="Suscripción · sesión de Gemini CLI" title="Gemini (Google AI Pro / Code Assist)">
-          <Toggle label="Mostrar en el widget" checked={cfg.gemini.enabled} onChange={(v) => set('gemini', { enabled: v })} />
-          <p className="q-note">
-            Cuotas diarias por modelo. Igual que con Claude y Codex, el login es el oficial de <Link href={LINKS.geminiCli}>Gemini CLI</Link>{' '}
-            (<code>gemini</code> → «Login with Google») y la app lee la sesión que guarda. Endpoints no oficiales.
-          </p>
-          <Field label="Fichero de credenciales" hint={<>Vacío = <code>%USERPROFILE%\.gemini\oauth_creds.json</code></>}>
-            <input type="text" spellCheck={false} value={cfg.gemini.credentialsPath ?? ''} onChange={(e) => set('gemini', { credentialsPath: strOrNull(e.target.value) })} />
-          </Field>
-          <div className="q-inline">
-            <Field label="Comando de login">
-              <input type="text" spellCheck={false} value={cfg.gemini.loginCommand} onChange={(e) => set('gemini', { loginCommand: e.target.value })} />
-            </Field>
-            <button className="eg-btn eg-btn--primary" onClick={() => api.openLogin('gemini').catch((e) => setSaved(String(e)))}>
-              Iniciar sesión
-            </button>
-          </div>
-        </Section>
-      )}
+      {(tab === 'claude' || tab === 'codex' || tab === 'gemini') &&
+        (() => {
+          const p = tab;
+          const info = {
+            claude: {
+              kicker: 'Suscripción · OAuth',
+              title: 'Claude (Pro / Max)',
+              note: 'Límites de sesión (5 h), semanales y por modelo de tu plan. Quorb lee la sesión que guarda Claude Code: no ve tu contraseña ni toca los tokens.',
+              file: 'Fichero de credenciales',
+              hint: <>Vacío = <code>%USERPROFILE%\.claude\.credentials.json</code>. Para WSL: <code>\\wsl.localhost\Ubuntu\home\TU_USUARIO\.claude\.credentials.json</code></>,
+            },
+            codex: {
+              kicker: 'Suscripción · OAuth',
+              title: 'ChatGPT (Plus / Pro · Codex)',
+              note: 'Límites de 5 h y semanales de tu plan de ChatGPT en Codex. Quorb lee la sesión que guarda el CLI de Codex.',
+              file: 'Fichero auth.json',
+              hint: <>Vacío = <code>%CODEX_HOME%</code> o <code>%USERPROFILE%\.codex\auth.json</code></>,
+            },
+            gemini: {
+              kicker: 'Suscripción · sesión de Gemini CLI',
+              title: 'Gemini (Google AI Pro / Code Assist)',
+              note: (
+                <>
+                  Cuotas diarias por modelo. Quorb lee la sesión que guarda <Link href={LINKS.geminiCli}>Gemini CLI</Link>. Endpoints no oficiales.
+                </>
+              ),
+              file: 'Fichero de credenciales',
+              hint: <>Vacío = <code>%USERPROFILE%\.gemini\oauth_creds.json</code></>,
+            },
+          }[p];
+          return (
+            <Section kicker={info.kicker} title={info.title}>
+              <Toggle label="Mostrar en el widget" checked={cfg[p].enabled} onChange={(v) => set(p, { enabled: v })} />
+              <p className="q-note">{info.note}</p>
+              <ol className="q-steps" aria-label="Cómo conectar la cuenta">
+                <CliConnect
+                  id={p}
+                  provider={p}
+                  loginCommand={cfg[p].loginCommand}
+                  cliMissing={cli[p] === false}
+                  persisted
+                  extra={false}
+                  health={healthFor(p, !cfg[p].enabled)}
+                />
+              </ol>
+              <details className="q-details">
+                <summary>Avanzado · fichero de sesión y comando de login</summary>
+                <Field label={info.file} hint={info.hint}>
+                  <input type="text" spellCheck={false} value={cfg[p].credentialsPath ?? ''} onChange={(e) => set(p, { credentialsPath: strOrNull(e.target.value) })} />
+                </Field>
+                <Field label="Comando de login">
+                  <input type="text" spellCheck={false} value={cfg[p].loginCommand} onChange={(e) => set(p, { loginCommand: e.target.value })} />
+                </Field>
+              </details>
+            </Section>
+          );
+        })()}
 
       {tab === 'cursor' && (
         <Section kicker="Suscripción · sesión de la app" title="Cursor">
           <Toggle label="Mostrar en el widget" checked={cfg.cursor.enabled} onChange={(v) => set('cursor', { enabled: v })} />
-          <p className="q-note">
-            Uso del plan en el ciclo actual (total, Auto y modelos API) y gasto on-demand. Se lee la sesión de la app de Cursor (solo lectura);
-            endpoint no oficial.
-          </p>
-          <Field label="Base de datos de Cursor" hint={<>Vacío = <code>%APPDATA%\Cursor\User\globalStorage\state.vscdb</code></>}>
-            <input type="text" spellCheck={false} value={cfg.cursor.credentialsPath ?? ''} onChange={(e) => set('cursor', { credentialsPath: strOrNull(e.target.value) })} />
-          </Field>
-          <SecretInput
-            id="cursor_token"
-            label="Token manual (opcional)"
-            configured={!!secrets.cursor_token}
-            onSaved={loadSecrets}
-            hint="Solo si no usas la app en este equipo. Si lo pones, tiene prioridad sobre la sesión de la app."
-          />
+          <p className="q-note">Uso del plan en el ciclo actual (total, Auto y modelos API) y gasto on-demand. Endpoint no oficial.</p>
+          <ol className="q-steps" aria-label="Cómo conectar la cuenta">
+            <li>
+              <b>Inicia sesión en la app de Cursor</b>
+              <span>
+                Quorb lee la sesión que guarda la app de Cursor en este equipo (solo lectura). Si no usas la app aquí, pega un token manual: tiene
+                prioridad sobre la sesión de la app.
+              </span>
+              <SecretInput id="cursor_token" label="Token manual (opcional)" configured={!!secrets.cursor_token} onSaved={loadSecrets} />
+            </li>
+            <HealthStep id="cursor" {...healthFor('cursor', !cfg.cursor.enabled)} />
+          </ol>
+          <details className="q-details">
+            <summary>Avanzado · base de datos de Cursor</summary>
+            <Field label="Base de datos de Cursor" hint={<>Vacío = <code>%APPDATA%\Cursor\User\globalStorage\state.vscdb</code></>}>
+              <input type="text" spellCheck={false} value={cfg.cursor.credentialsPath ?? ''} onChange={(e) => set('cursor', { credentialsPath: strOrNull(e.target.value) })} />
+            </Field>
+          </details>
         </Section>
       )}
 
       {tab === 'copilot' && (
         <Section kicker="Suscripción · API oficial" title="GitHub Copilot">
           <Toggle label="Mostrar en el widget" checked={cfg.copilot.enabled} onChange={(v) => set('copilot', { enabled: v })} />
-          <p className="q-note">
-            Peticiones premium del mes con la API de facturación de GitHub. Se reinician el día 1 (UTC).
-          </p>
-          <div className="q-cols">
-            <Field label="Usuario de GitHub">
-              <input type="text" spellCheck={false} placeholder="egdev6" value={cfg.copilot.username} onChange={(e) => set('copilot', { username: e.target.value })} />
-            </Field>
-            <Field label="Plan">
-              <select value={cfg.copilot.plan} onChange={(e) => set('copilot', { plan: e.target.value })}>
-                <option value="free">Free · 50</option>
-                <option value="pro">Pro · 300</option>
-                <option value="pro_plus">Pro+ · 1500</option>
-                <option value="business">Business · 300</option>
-                <option value="enterprise">Enterprise · 1000</option>
-                <option value="custom">Otra cantidad</option>
-              </select>
-            </Field>
-          </div>
-          {cfg.copilot.plan === 'custom' && (
-            <Field label="Peticiones premium incluidas al mes">
-              <input
-                type="number"
-                min={1}
-                value={cfg.copilot.customAllowance ?? ''}
-                onChange={(e) => set('copilot', { customAllowance: numOrNull(e.target.value) })}
+          <p className="q-note">Peticiones premium del mes con la API de facturación de GitHub. Se reinician el día 1 (UTC).</p>
+          <ol className="q-steps" aria-label="Cómo conectar la cuenta">
+            <li data-done={cfg.copilot.username.trim() !== '' || undefined}>
+              <b>Usuario y plan de GitHub</b>
+              <div className="q-cols">
+                <Field label="Usuario de GitHub">
+                  <input type="text" spellCheck={false} placeholder="egdev6" value={cfg.copilot.username} onChange={(e) => set('copilot', { username: e.target.value })} />
+                </Field>
+                <Field label="Plan">
+                  <select value={cfg.copilot.plan} onChange={(e) => set('copilot', { plan: e.target.value })}>
+                    <option value="free">Free · 50</option>
+                    <option value="pro">Pro · 300</option>
+                    <option value="pro_plus">Pro+ · 1500</option>
+                    <option value="business">Business · 300</option>
+                    <option value="enterprise">Enterprise · 1000</option>
+                    <option value="custom">Otra cantidad</option>
+                  </select>
+                </Field>
+              </div>
+              {cfg.copilot.plan === 'custom' && (
+                <Field label="Peticiones premium incluidas al mes">
+                  <input type="number" min={1} value={cfg.copilot.customAllowance ?? ''} onChange={(e) => set('copilot', { customAllowance: numOrNull(e.target.value) })} />
+                </Field>
+              )}
+            </li>
+            <li data-done={!!secrets.github_token || undefined}>
+              <b>Token de solo lectura</b>
+              <SecretInput
+                id="github_token"
+                label="Token de GitHub (fine-grained)"
+                configured={!!secrets.github_token}
+                onSaved={loadSecrets}
+                hint={<>Créalo en <Link href={LINKS.githubToken}>GitHub › Fine-grained tokens</Link> con el permiso de cuenta «Plan»: solo lectura.</>}
               />
-            </Field>
-          )}
-          <SecretInput
-            id="github_token"
-            label="Token de GitHub (fine-grained)"
-            configured={!!secrets.github_token}
-            onSaved={loadSecrets}
-            hint={<>Créalo en <Link href={LINKS.githubToken}>GitHub › Fine-grained tokens</Link> con el permiso de cuenta «Plan»: solo lectura.</>}
-          />
+            </li>
+            <HealthStep id="copilot" {...healthFor('copilot', !cfg.copilot.enabled)} />
+          </ol>
         </Section>
       )}
 
@@ -1408,56 +1810,63 @@ export function Settings() {
         <Section kicker="Pago por uso · API oficial" title="OpenRouter">
           <Toggle label="Mostrar en el widget" checked={cfg.openrouter.enabled} onChange={(v) => set('openrouter', { enabled: v })} />
           <p className="q-note">Gasto del mes y de hoy, límite de la key (si tiene) y saldo de la cuenta.</p>
-          <SecretInput
-            id="openrouter_api_key"
-            label="API key"
-            configured={!!secrets.openrouter_api_key}
-            onSaved={loadSecrets}
-            hint={<>Créala en <Link href={LINKS.openrouterKeys}>openrouter.ai › Keys</Link>.</>}
-          />
+          <ol className="q-steps" aria-label="Cómo conectar la cuenta">
+            <li data-done={!!secrets.openrouter_api_key || undefined}>
+              <b>API key</b>
+              <SecretInput
+                id="openrouter_api_key"
+                label="API key"
+                configured={!!secrets.openrouter_api_key}
+                onSaved={loadSecrets}
+                hint={<>Créala en <Link href={LINKS.openrouterKeys}>openrouter.ai › Keys</Link>.</>}
+              />
+            </li>
+            <HealthStep id="openrouter" {...healthFor('openrouter', !cfg.openrouter.enabled)} />
+          </ol>
         </Section>
       )}
 
       {tab === 'nan' && (
         <Section kicker="Suscripción · cuenta o API key" title="NaN Builders">
           <Toggle label="Mostrar en el widget" checked={cfg.nan.enabled} onChange={(v) => set('nan', { enabled: v })} />
-          <NanConnect connected={!!secrets.nan_session} onChange={loadSecrets} />
           <p className="q-note">
-            Con la cuenta conectada ves lo mismo que en tu dashboard: tokens usados frente a la cuota de cada modelo, cuándo se reinicia y la
-            serie diaria. Sin cuenta, la API key usa <code>/v1/usage</code> y las cuotas publicadas. <Link href={LINKS.nanDocs}>Docs</Link>
+            Con la cuenta conectada ves lo mismo que en tu dashboard: tokens usados frente a la cuota de cada modelo, cuándo se reinicia y la serie
+            diaria. Sin cuenta, la API key usa <code>/v1/usage</code> y las cuotas publicadas. <Link href={LINKS.nanDocs}>Docs</Link>
           </p>
-          <SecretInput
-            id="nan_api_key"
-            label="API key (alternativa)"
-            configured={!!secrets.nan_api_key}
-            onSaved={loadSecrets}
-            hint={<>Créala en <Link href={LINKS.nanKeys}>cloud.nan.builders</Link> › API Keys</>}
-          />
-          <div className="q-cols">
-            <Field label="Plan">
-              <select value={cfg.nan.plan} onChange={(e) => set('nan', { plan: e.target.value })}>
-                <option value="community">nan_community</option>
-                <option value="member">nan_member</option>
-                <option value="premium">GLM Premium</option>
-              </select>
-            </Field>
+          <ol className="q-steps" aria-label="Cómo conectar la cuenta">
+            <li data-done={!!secrets.nan_session || !!secrets.nan_api_key || undefined}>
+              <b>Conecta tu cuenta o pega una API key</b>
+              <NanConnect connected={!!secrets.nan_session} onChange={loadSecrets} />
+              <SecretInput
+                id="nan_api_key"
+                label="API key (alternativa)"
+                configured={!!secrets.nan_api_key}
+                onSaved={loadSecrets}
+                hint={<>Créala en <Link href={LINKS.nanKeys}>cloud.nan.builders</Link> › API Keys</>}
+              />
+            </li>
+            <li data-done>
+              <b>Plan</b>
+              <Field label="Plan">
+                <select value={cfg.nan.plan} onChange={(e) => set('nan', { plan: e.target.value })}>
+                  <option value="community">nan_community</option>
+                  <option value="member">nan_member</option>
+                  <option value="premium">GLM Premium</option>
+                </select>
+              </Field>
+            </li>
+            <HealthStep id="nan" {...healthFor('nan', !cfg.nan.enabled)} />
+          </ol>
+          <details className="q-details">
+            <summary>Avanzado · URL, facturación y endpoint de consumo</summary>
             <Field label="Base URL">
               <input type="text" spellCheck={false} value={cfg.nan.baseUrl} onChange={(e) => set('nan', { baseUrl: e.target.value })} />
             </Field>
-          </div>
-          <Field label="Día de inicio de facturación" hint="Solo para GLM 5.3 (cuenta por periodo de Stripe) cuando usas la API key.">
-            <input
-              type="number"
-              min={1}
-              max={28}
-              value={cfg.nan.billingDay}
-              onChange={(e) => set('nan', { billingDay: Number(e.target.value) || 1 })}
-            />
-          </Field>
-          <NanProbe />
-          <details className="q-details">
-            <summary>Endpoint de consumo (avanzado)</summary>
-            <Field label="URL" hint="Se llama con tu key como Bearer y debe devolver JSON.">
+            <Field label="Día de inicio de facturación" hint="Solo para GLM 5.3 (cuenta por periodo de Stripe) cuando usas la API key.">
+              <input type="number" min={1} max={28} value={cfg.nan.billingDay} onChange={(e) => set('nan', { billingDay: Number(e.target.value) || 1 })} />
+            </Field>
+            <NanProbe />
+            <Field label="Endpoint de consumo · URL" hint="Se llama con tu key como Bearer y debe devolver JSON.">
               <input type="text" spellCheck={false} value={cfg.nan.usageUrl ?? ''} onChange={(e) => set('nan', { usageUrl: strOrNull(e.target.value) })} />
             </Field>
             <div className="q-cols">
@@ -1475,49 +1884,41 @@ export function Settings() {
         </Section>
       )}
 
-      {tab === 'anthropic_api' && (
-        <Section kicker="Pago por uso · Admin key" title="Anthropic API">
-          <Toggle label="Mostrar gasto del mes" checked={cfg.anthropicApi.enabled} onChange={(v) => set('anthropicApi', { enabled: v })} />
-          <SecretInput
-            id="anthropic_admin_key"
-            label="Admin API key (sk-ant-admin…)"
-            configured={!!secrets.anthropic_admin_key}
-            onSaved={loadSecrets}
-            hint={<>Las APIs de coste no admiten OAuth: hace falta una <Link href={LINKS.anthropicAdmin}>Admin key</Link> (solo lectura de la organización).</>}
-          />
-          <Field label="Presupuesto mensual (USD, opcional)">
-            <input
-              type="number"
-              min={0}
-              step="any"
-              value={cfg.anthropicApi.monthlyBudgetUsd ?? ''}
-              onChange={(e) => set('anthropicApi', { monthlyBudgetUsd: numOrNull(e.target.value) })}
-            />
-          </Field>
-        </Section>
-      )}
-
-      {tab === 'openai_api' && (
-        <Section kicker="Pago por uso · Admin key" title="OpenAI API">
-          <Toggle label="Mostrar gasto del mes" checked={cfg.openaiApi.enabled} onChange={(v) => set('openaiApi', { enabled: v })} />
-          <SecretInput
-            id="openai_admin_key"
-            label="Admin key"
-            configured={!!secrets.openai_admin_key}
-            onSaved={loadSecrets}
-            hint={<>Créala en <Link href={LINKS.openaiAdmin}>Organization › Admin keys</Link>.</>}
-          />
-          <Field label="Presupuesto mensual (USD, opcional)">
-            <input
-              type="number"
-              min={0}
-              step="any"
-              value={cfg.openaiApi.monthlyBudgetUsd ?? ''}
-              onChange={(e) => set('openaiApi', { monthlyBudgetUsd: numOrNull(e.target.value) })}
-            />
-          </Field>
-        </Section>
-      )}
+      {(tab === 'anthropic_api' || tab === 'openai_api') &&
+        (() => {
+          const k = tab === 'anthropic_api' ? 'anthropicApi' : 'openaiApi';
+          const secret: SecretKey = tab === 'anthropic_api' ? 'anthropic_admin_key' : 'openai_admin_key';
+          return (
+            <Section kicker="Pago por uso · Admin key" title={tab === 'anthropic_api' ? 'Anthropic API' : 'OpenAI API'}>
+              <Toggle label="Mostrar gasto del mes" checked={cfg[k].enabled} onChange={(v) => set(k, { enabled: v })} />
+              <ol className="q-steps" aria-label="Cómo conectar la cuenta">
+                <li data-done={!!secrets[secret] || undefined}>
+                  <b>Admin key</b>
+                  <SecretInput
+                    id={secret}
+                    label={tab === 'anthropic_api' ? 'Admin API key (sk-ant-admin…)' : 'Admin key'}
+                    configured={!!secrets[secret]}
+                    onSaved={loadSecrets}
+                    hint={
+                      tab === 'anthropic_api' ? (
+                        <>Las APIs de coste no admiten OAuth: hace falta una <Link href={LINKS.anthropicAdmin}>Admin key</Link> (solo lectura de la organización).</>
+                      ) : (
+                        <>Créala en <Link href={LINKS.openaiAdmin}>Organization › Admin keys</Link>.</>
+                      )
+                    }
+                  />
+                </li>
+                <li data-done={cfg[k].monthlyBudgetUsd != null || undefined}>
+                  <b>Presupuesto mensual (opcional)</b>
+                  <Field label="USD al mes">
+                    <input type="number" min={0} step="any" value={cfg[k].monthlyBudgetUsd ?? ''} onChange={(e) => set(k, { monthlyBudgetUsd: numOrNull(e.target.value) })} />
+                  </Field>
+                </li>
+                <HealthStep id={tab} {...healthFor(tab, !cfg[k].enabled)} />
+              </ol>
+            </Section>
+          );
+        })()}
         </>
       )}
                   </InDrawer.Provider>

@@ -27,6 +27,12 @@ export const api = {
    * `account_session` del backend.
    */
   accountSessionFileExists: (id: string) => invoke<boolean>('account_session', { id }),
+  /** ¿Hay sesión del CLI en la carpeta de esta cuenta adicional? */
+  accountSession: (id: string) => invoke<boolean>('account_session', { id }),
+  /** CLIs de login instalados: `{ claude, codex, gemini }` */
+  cliStatus: () => invoke<Record<string, boolean>>('cli_status'),
+  /** Consulta una cuenta (principal o adicional) con lo guardado, aunque esté oculta */
+  checkProvider: (id: string) => invoke<UsageReport | null>('check_provider', { id }),
   openSettings: () => invoke<void>('open_settings'),
   showDetail: () => invoke<boolean>('show_detail'),
   setTrayTooltip: (text: string) => invoke<void>('set_tray_tooltip', { text }),

@@ -93,6 +93,45 @@ pub async fn fetch_all(cfg: &AppConfig, http: &reqwest::Client) -> Vec<UsageRepo
     futures::future::join_all(jobs).await
 }
 
+/// Consulta una sola cuenta (principal o adicional) aunque esté oculta en el widget,
+/// para comprobar la conexión desde Ajustes. `None` si el id no existe.
+pub async fn fetch_one(cfg: &AppConfig, id: &str, http: &reqwest::Client) -> Option<UsageReport> {
+    if let Some(a) = cfg.accounts.iter().find(|a| a.id == id) {
+        return Some(fetch_account(cfg, a, http).await);
+    }
+    Some(match id {
+        "claude" => claude::fetch(&cfg.claude, Who::main("claude"), http).await,
+        "codex" => codex::fetch(&cfg.codex, Who::main("codex"), http).await,
+        "gemini" => gemini::fetch(&cfg.gemini, Who::main("gemini"), http).await,
+        "cursor" => cursor::fetch(&cfg.cursor, Who::main("cursor"), http).await,
+        "copilot" => copilot::fetch(&cfg.copilot, Who::main("copilot"), http).await,
+        "nan" => nan::fetch(&cfg.nan, Who::main("nan"), http).await,
+        "openrouter" => openrouter::fetch(&cfg.openrouter, Who::main("openrouter"), http).await,
+        "anthropic_api" => anthropic_api::fetch(&cfg.anthropic_api, Who::main("anthropic_api"), http).await,
+        "openai_api" => openai_api::fetch(&cfg.openai_api, Who::main("openai_api"), http).await,
+        _ => return None,
+    })
+}
+
+/// Fichero de sesión que deja el CLI de una cuenta: la principal de Claude, Codex
+/// o Gemini (por proveedor) o una adicional (por id). `None` si no usa CLI.
+pub fn session_file(cfg: &AppConfig, id: &str) -> Option<PathBuf> {
+    let h = home();
+    if let Some(a) = cfg.accounts.iter().find(|a| a.id == id) {
+        return a.credentials_file(&h);
+    }
+    let main = |c: &SubscriptionConfig, default: PathBuf| match c.credentials_path.as_deref().map(str::trim) {
+        Some(p) if !p.is_empty() => PathBuf::from(p),
+        _ => default,
+    };
+    match id {
+        "claude" => Some(main(&cfg.claude, h.join(".claude").join(".credentials.json"))),
+        "codex" => codex::resolved_auth_path(cfg.codex.credentials_path.as_deref()).ok(),
+        "gemini" => Some(main(&cfg.gemini, h.join(".gemini").join("oauth_creds.json"))),
+        _ => None,
+    }
+}
+
 /// Consulta una cuenta adicional con la config de su proveedor adaptada a ella.
 fn fetch_account<'a>(cfg: &'a AppConfig, a: &'a Account, http: &'a reqwest::Client) -> BoxFuture<'a, UsageReport> {
     let who = Who::extra(a);

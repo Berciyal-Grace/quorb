@@ -448,3 +448,15 @@ button.q-provider { display: flex; flex-direction: column; width: 100%; font: in
 .q-steps > li[data-done]::before { content: '✓'; background: color-mix(in srgb, var(--color-status-success) 22%, var(--color-surface-2)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-status-success) 55%, transparent); color: var(--color-status-success); }
 .q-steps b { color: var(--color-fg-default); font-weight: 600; }
 .q-steps__actions { display: flex; gap: 8px; margin-top: 6px; }
+.q-steps__notice { margin-top: 8px; user-select: text; }
+/* Falta el CLI de login: aviso con la orden para instalarlo */
+.q-cli { flex-direction: column; align-items: stretch; gap: 8px; }
+.q-cli .eg-notice__text { flex: none; }
+.q-steps .q-cli { margin-top: 6px; }
+.q-cli__cmd { display: flex; align-items: center; gap: 8px; }
+.q-cli__cmd code { flex: 1; min-width: 0; padding: 6px 10px; border-radius: var(--radius-md); background: var(--color-surface-0); box-shadow: var(--shadow-well); font-size: 13px; overflow-x: auto; white-space: nowrap; user-select: all; }
+/* Paso de comprobación: estado de la conexión */
+.q-steps > li[data-state='checking']::before { content: '…'; color: var(--color-fg-muted); }
+.q-steps > li[data-state='warn']::before { content: '!'; background: color-mix(in srgb, var(--color-status-warning) 18%, var(--color-surface-2)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-status-warning) 55%, transparent); color: var(--color-status-warning); }
+.q-steps > li[data-state='error']::before { content: '!'; background: color-mix(in srgb, var(--color-status-danger) 18%, var(--color-surface-2)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-status-danger) 55%, transparent); color: var(--color-status-danger); }
+.q-steps > li > .eg-field, .q-steps > li > .q-cols, .q-steps > li > .eg-secret, .q-steps > li > div { margin-top: 6px; }

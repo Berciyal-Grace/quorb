@@ -15,6 +15,13 @@ export const SESSION_DIR: Partial<Record<AccountProvider, { env: string; file: s
   gemini: { env: 'GEMINI_CLI_HOME', file: '.gemini\\oauth_creds.json' },
 };
 
+/** Cómo instalar el CLI con el que se inicia sesión (si falta en el equipo). */
+export const CLI_INSTALL: Partial<Record<AccountProvider, { name: string; cmd: string; where: string; needs?: string }>> = {
+  claude: { name: 'Claude Code', cmd: 'irm https://claude.ai/install.ps1 | iex', where: 'PowerShell' },
+  codex: { name: 'Codex CLI', cmd: 'npm install -g @openai/codex', where: 'una terminal', needs: 'Node.js' },
+  gemini: { name: 'Gemini CLI', cmd: 'npm install -g @google/gemini-cli', where: 'una terminal', needs: 'Node.js' },
+};
+
 /** Carpeta por defecto (igual que `Account::session_dir`). */
 export const defaultSessionDir = (a: Pick<Account, 'id' | 'provider'>) =>
   `%USERPROFILE%\\.quorb\\accounts\\${a.provider}-${a.id.split(':')[1] ?? a.id}`;
