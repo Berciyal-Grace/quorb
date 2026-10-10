@@ -93,6 +93,45 @@ pub async fn fetch_all(cfg: &AppConfig, http: &reqwest::Client) -> Vec<UsageRepo
     futures::future::join_all(jobs).await
 }
 
+/// Consulta una sola cuenta (principal o adicional) aunque esté oculta en el widget,
+/// para comprobar la conexión desde Ajustes. `None` si el id no existe.
+pub async fn fetch_one(cfg: &AppConfig, id: &str, http: &reqwest::Client) -> Option<UsageReport> {
+    if let Some(a) = cfg.accounts.iter().find(|a| a.id == id) {
+        return Some(fetch_account(cfg, a, http).await);
+    }
+    Some(match id {
+        "claude" => claude::fetch(&cfg.claude, Who::main("claude"), http).await,
+        "codex" => codex::fetch(&cfg.codex, Who::main("codex"), http).await,
+        "gemini" => gemini::fetch(&cfg.gemini, Who::main("gemini"), http).await,
+        "cursor" => cursor::fetch(&cfg.cursor, Who::main("cursor"), http).await,
+        "copilot" => copilot::fetch(&cfg.copilot, Who::main("copilot"), http).await,
+        "nan" => nan::fetch(&cfg.nan, Who::main("nan"), http).await,
+        "openrouter" => openrouter::fetch(&cfg.openrouter, Who::main("openrouter"), http).await,
+        "anthropic_api" => anthropic_api::fetch(&cfg.anthropic_api, Who::main("anthropic_api"), http).await,
+        "openai_api" => openai_api::fetch(&cfg.openai_api, Who::main("openai_api"), http).await,
+        _ => return None,
+    })
+}
+
+/// Fichero de sesión que deja el CLI de una cuenta: la principal de Claude, Codex
+/// o Gemini (por proveedor) o una adicional (por id). `None` si no usa CLI.
+/// `home` se inyecta para poder probar con carpetas propias.
+pub fn session_file(cfg: &AppConfig, id: &str, home: &Path) -> Option<PathBuf> {
+    if let Some(a) = cfg.accounts.iter().find(|a| a.id == id) {
+        return a.credentials_file(home);
+    }
+    let main = |c: &SubscriptionConfig, default: PathBuf| match c.credentials_path.as_deref().map(str::trim) {
+        Some(p) if !p.is_empty() => PathBuf::from(p),
+        _ => default,
+    };
+    match id {
+        "claude" => Some(main(&cfg.claude, home.join(".claude").join(".credentials.json"))),
+        "codex" => codex::resolved_auth_path(cfg.codex.credentials_path.as_deref()).ok(),
+        "gemini" => Some(main(&cfg.gemini, home.join(".gemini").join("oauth_creds.json"))),
+        _ => None,
+    }
+}
+
 /// Consulta una cuenta adicional con la config de su proveedor adaptada a ella.
 fn fetch_account<'a>(cfg: &'a AppConfig, a: &'a Account, http: &'a reqwest::Client) -> BoxFuture<'a, UsageReport> {
     let who = Who::extra(a);
@@ -238,6 +277,69 @@ pub(crate) fn net_error(e: reqwest::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Carpeta temporal propia de cada prueba, sin tocar el HOME real.
+    fn temp_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("quorb-session-file-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn extra_account(provider: &str, dir: &Path) -> Account {
+        Account {
+            id: format!("{provider}:w1"),
+            provider: provider.into(),
+            config_dir: Some(dir.to_string_lossy().into_owned()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn session_file_maps_main_and_extra_accounts() {
+        let home = temp_dir("home");
+        let claude_dir = home.join("claude-w1");
+        std::fs::create_dir_all(&claude_dir).unwrap();
+        let cfg = AppConfig { accounts: vec![extra_account("claude", &claude_dir)], ..Default::default() };
+        // Cuenta adicional: fichero del CLI dentro de su propia carpeta.
+        assert_eq!(session_file(&cfg, "claude:w1", &home), Some(claude_dir.join(".credentials.json")));
+
+        // Cuenta adicional de Codex: `auth.json` de su carpeta.
+        let codex_dir = home.join("codex-w1");
+        std::fs::create_dir_all(&codex_dir).unwrap();
+        let cfg = AppConfig { accounts: vec![extra_account("codex", &codex_dir)], ..Default::default() };
+        assert_eq!(session_file(&cfg, "codex:w1", &home), Some(codex_dir.join("auth.json")));
+
+        // Proveedor sin login por CLI: nunca hay fichero de sesión.
+        let or_dir = home.join("openrouter-w1");
+        std::fs::create_dir_all(&or_dir).unwrap();
+        let cfg = AppConfig { accounts: vec![extra_account("openrouter", &or_dir)], ..Default::default() };
+        assert_eq!(session_file(&cfg, "openrouter:w1", &home), None);
+
+        // Id que no existe en la config.
+        assert_eq!(session_file(&AppConfig::default(), "claude:otra", &home), None);
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn session_file_main_uses_credentials_path_or_home_default() {
+        let home = temp_dir("main");
+        let cfg = AppConfig::default();
+        assert_eq!(session_file(&cfg, "claude", &home), Some(home.join(".claude").join(".credentials.json")));
+        assert_eq!(session_file(&cfg, "gemini", &home), Some(home.join(".gemini").join("oauth_creds.json")));
+        assert_eq!(session_file(&cfg, "cursor", &home), None);
+        assert_eq!(session_file(&cfg, "desconocido", &home), None);
+
+        let mut cfg = AppConfig::default();
+        cfg.claude.credentials_path = Some("/tmp/creds/claude.json".into());
+        assert_eq!(session_file(&cfg, "claude", &home), Some(PathBuf::from("/tmp/creds/claude.json")));
+        // Ruta explícita vacía o solo espacios: se usa la de siempre.
+        cfg.claude.credentials_path = Some("   ".into());
+        assert_eq!(session_file(&cfg, "claude", &home), Some(home.join(".claude").join(".credentials.json")));
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
 
     #[test]
     fn month_start_is_first_day_midnight() {
