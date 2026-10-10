@@ -21,6 +21,8 @@ export const api = {
   openLogin: (provider: string) => invoke<void>('open_login', { provider }),
   /** Cambia cuando un CLI renueva su sesión (fechas de sus ficheros de credenciales) */
   sessionStamp: () => invoke<number>('session_stamp'),
+  /** ¿Hay sesión del CLI en la carpeta de esta cuenta adicional? */
+  accountSession: (id: string) => invoke<boolean>('account_session', { id }),
   openSettings: () => invoke<void>('open_settings'),
   showDetail: () => invoke<boolean>('show_detail'),
   setTrayTooltip: (text: string) => invoke<void>('set_tray_tooltip', { text }),

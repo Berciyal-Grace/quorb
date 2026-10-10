@@ -279,6 +279,17 @@ fn session_stamp(state: State<'_, AppState>) -> u64 {
     providers::session_stamp(&cfg)
 }
 
+/// ¿Hay sesión del CLI guardada para una cuenta adicional? (existe su fichero de credenciales)
+#[tauri::command]
+fn account_session(state: State<'_, AppState>, id: String) -> bool {
+    let cfg = state.config.lock().unwrap().clone();
+    cfg.accounts
+        .iter()
+        .find(|a| a.id == id)
+        .and_then(|a| a.credentials_file(&providers::home()))
+        .is_some_and(|p| p.is_file())
+}
+
 #[tauri::command]
 fn open_login(state: State<'_, AppState>, provider: String) -> Result<(), String> {
     let cfg = state.config.lock().unwrap().clone();
@@ -535,6 +546,7 @@ pub fn run() {
             fetch_usage,
             open_login,
             session_stamp,
+            account_session,
             open_settings,
             show_detail,
             set_tray_tooltip,

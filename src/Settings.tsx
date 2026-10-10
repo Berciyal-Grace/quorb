@@ -473,10 +473,16 @@ function AccountEditor({
   onRemove,
   onSecrets,
   onError,
+  onSave,
+  loginCommand,
 }: {
   account: Account;
   /** Ya está guardada tal cual en el backend (necesario para abrir su login). */
   persisted: boolean;
+  /** Guarda los cambios pendientes (el login por CLI busca la cuenta en la config guardada). */
+  onSave: () => Promise<void>;
+  /** Comando de login del proveedor (el de la cuenta principal). */
+  loginCommand: string;
   secrets: SecretStatus;
   onChange: (patch: Partial<Account>) => void;
   onRemove: () => void;
@@ -485,6 +491,39 @@ function AccountEditor({
 }) {
   const key = (k: SecretKey) => secretKey(k, a.id);
   const session = SESSION_DIR[a.provider];
+  const [connected, setConnected] = useState(false);
+  const [busy, setBusy] = useState(false);
+  // ¿Ya hay sesión del CLI en su carpeta? Se comprueba mientras el editor está abierto
+  // para marcar el paso como hecho en cuanto termina el login.
+  useEffect(() => {
+    if (!session || !persisted) {
+      setConnected(false);
+      return;
+    }
+    let alive = true;
+    const check = () =>
+      api
+        .accountSession(a.id)
+        .then((v) => alive && setConnected(v))
+        .catch(() => {});
+    check();
+    const t = window.setInterval(check, 3000);
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+    };
+  }, [a.id, persisted, session]);
+  const connect = async () => {
+    setBusy(true);
+    try {
+      if (!persisted) await onSave();
+      await api.openLogin(a.id);
+    } catch (e) {
+      onError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <Section kicker="Cuenta adicional" title={a.label}>
       <div className="q-cols">
@@ -496,20 +535,43 @@ function AccountEditor({
 
       {session && (
         <>
-          <p className="q-note">
-            Esta cuenta tiene su propia carpeta de sesión, así no toca la principal. «Iniciar sesión» abre el login oficial con{' '}
-            <code>{session.env}</code> apuntando a esa carpeta. Quorb no renueva el token: si sale caducada, vuelve a abrir el CLI con esa
-            variable.
-          </p>
-          <Field label="Carpeta de sesión" hint={<>Vacío = <code>{defaultSessionDir(a)}</code>. Puedes usar una que ya tengas. Quorb lee <code>{session.file}</code> dentro de ella.</>}>
-            <input type="text" spellCheck={false} value={a.configDir ?? ''} placeholder={defaultSessionDir(a)} onChange={(e) => onChange({ configDir: strOrNull(e.target.value) })} />
-          </Field>
-          <div className="q-inline">
-            <button className="eg-btn eg-btn--primary" disabled={!persisted} onClick={() => api.openLogin(a.id).catch((e) => onError(String(e)))}>
-              Iniciar sesión
-            </button>
-            {!persisted && <span className="q-note">Guarda los cambios para poder iniciar sesión.</span>}
-          </div>
+          <ol className="q-steps" aria-label="Cómo conectar esta cuenta">
+            <li data-done={a.label.trim() !== '' || undefined}>
+              <b>Ponle nombre</b>
+              <span>Arriba, para distinguirla de la principal en la tira (por ejemplo, «Trabajo»).</span>
+            </li>
+            <li data-done={connected || undefined}>
+              <b>Inicia sesión con la otra cuenta</b>
+              <span>
+                Se abre una terminal con <code>{loginCommand}</code>
+                {a.provider === 'claude' && <> (si no te lo pide, escribe <code>/login</code>)</>}. En el navegador entra con la cuenta que
+                quieres añadir, no con la principal: si el navegador ya tiene abierta la principal, usa una ventana privada.
+              </span>
+              <span className="q-steps__actions">
+                <button className={`eg-btn ${connected ? 'eg-btn--secondary' : 'eg-btn--primary'}`} disabled={busy} onClick={connect}>
+                  {connected ? 'Volver a iniciar sesión' : persisted ? 'Iniciar sesión' : 'Guardar e iniciar sesión'}
+                </button>
+              </span>
+            </li>
+            <li data-done={connected || undefined}>
+              <b>{connected ? 'Conectada' : 'Listo'}</b>
+              <span>
+                {connected
+                  ? 'Sesión encontrada. Aparece en la tira con su número en el próximo refresco.'
+                  : 'Quorb detecta la sesión sola en cuanto termines el login; no hace falta hacer nada más.'}
+              </span>
+            </li>
+          </ol>
+          <details className="q-details">
+            <summary>Avanzado · carpeta de sesión</summary>
+            <p className="q-note">
+              Cada cuenta guarda su sesión en su propia carpeta, así no toca la principal: el login se abre con <code>{session.env}</code>{' '}
+              apuntando a ella. Quorb no renueva el token; si caduca, «Renovar sesión» vuelve a abrir el CLI.
+            </p>
+            <Field label="Carpeta de sesión" hint={<>Vacío = <code>{defaultSessionDir(a)}</code>. Puedes usar una que ya tengas. Quorb lee <code>{session.file}</code> dentro de ella.</>}>
+              <input type="text" spellCheck={false} value={a.configDir ?? ''} placeholder={defaultSessionDir(a)} onChange={(e) => onChange({ configDir: strOrNull(e.target.value) })} />
+            </Field>
+          </details>
         </>
       )}
 
@@ -1178,6 +1240,12 @@ export function Settings() {
           onRemove={() => removeAccount(selAccount)}
           onSecrets={loadSecrets}
           onError={setSaved}
+          onSave={save}
+          loginCommand={
+            selAccount.provider === 'claude' || selAccount.provider === 'codex' || selAccount.provider === 'gemini'
+              ? cfg[selAccount.provider].loginCommand
+              : ''
+          }
         />
       )}
       {!selAccount && (
