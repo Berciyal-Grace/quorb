@@ -35,6 +35,46 @@ These are the scripts declared in `package.json`:
 | `npm run app:dev` | Run the desktop app with hot reload |
 | `npm run app:build` | Build a local (unsigned) installer |
 
+### Contributing with ODD
+
+ODD work follows a maintainer-approved GitHub roadmap: milestones describe outcomes,
+issues define accepted work, and the index links the current approved scope.
+The official index has not been published/configured yet; ask the maintainer for
+its link before choosing ODD work. README ideas are not an approved order.
+
+1. Read the index, issue and current accepted revision. Check dependencies and readiness.
+2. Choose open, unassigned work without overlapping PR or claim comments.
+   Tasks assigned only to you are resumable, not free work. Check both issues and PR.
+3. Communicate a clear start request. The assistant verifies your GitHub identity,
+   adds you as assignee and checks the result before implementation. If you do not
+   use an assistant, request assignment from the maintainer before starting.
+4. If another contributor owns the work or assignment fails, coordinate explicitly.
+   Do not remove others or assume reservation: GitHub assignments are not locks.
+5. Follow accepted ODD phases and criteria. Propose scope changes for approval;
+   changes to existing tasks are recorded as revision comments linked from the index.
+6. Recheck scope, ownership and related PR before submitting. Include acceptance
+   and real validation evidence in the PR template; merge is a separate decision.
+
+Independent lower-priority work is allowed with a warning; blocked work needs
+coordination. Bugs and small tasks without ODD use the usual contribution flow.
+Browsing, planning or reviewing a PR does not assign it to you.
+
+#### Optional assistant skill
+
+The portable skill lives in [`.agents/skills/odd-contribute/`](./.agents/skills/odd-contribute/SKILL.md).
+In Pi, open the checkout containing it, review/trust the project resources when
+requested, then run `/reload` and `/skill:odd-contribute`. A natural-language
+request such as “I want to contribute to an ODD issue in Quorb” can also select it.
+Explicit invocation is more reliable; other agents can read the same contract.
+No global skills are required for contributors. Without an assistant, follow the
+steps above; the skill is guidance, not enforcement.
+
+Maintainers can use their global `odd-roadmap-plan` and `odd-roadmap-continue`
+skills to publish/review the roadmap. After publishing, replace the “not yet
+published” status in both language sections with the canonical index link.
+Refresh `/skill-registry:refresh` when available after changing project skills.
+The `.atl/` skill index/cache is local and ignored by Git; it is not the official roadmap.
+
 ### Adding a provider
 
 Each provider is a single Rust file in `src-tauri/src/providers/<name>.rs` that returns a `UsageReport` through `pub async fn fetch(<config>, http) -> UsageReport`. It never returns `Err`: report a failure on the report itself.
@@ -106,6 +146,46 @@ Estos son los scripts declarados en `package.json`:
 | `cd src-tauri; cargo test` | Tests de Rust |
 | `npm run app:dev` | Ejecutar la app de escritorio con hot reload |
 | `npm run app:build` | Compilar un instalador local (sin firma) |
+
+### Contribuir con ODD
+
+El trabajo ODD sigue un roadmap aprobado por el mantenedor en GitHub: los
+milestones describen resultados, las issues definen trabajo aceptado y el índice
+enlaza el alcance vigente. El índice oficial aún no se ha publicado/configurado;
+pide su enlace antes de elegir trabajo ODD. Las ideas del README no son un orden aprobado.
+
+1. Lee el índice, la issue y su revisión aceptada. Comprueba dependencias y preparación.
+2. Elige trabajo abierto, sin asignar y sin PR o comentarios de toma solapados.
+   Lo asignado solo a ti se puede retomar, pero no está libre. Revisa issues y PR.
+3. Comunica claramente que empiezas. El asistente verifica tu identidad de GitHub,
+   te añade como assignee y comprueba el resultado antes de implementar. Si no
+   usas asistente, solicita la asignación al mantenedor antes de empezar.
+4. Si otra persona lo lleva o falla la asignación, coordina explícitamente.
+   No retires responsables ni supongas reserva: las asignaciones no son bloqueos.
+5. Sigue fases y criterios ODD aceptados. Propón cambios de alcance para aprobación;
+   los de tareas existentes quedan como comentarios de revisión enlazados desde el índice.
+6. Revisa alcance, responsables y PR relacionadas antes de entregar. Incluye aceptación
+   y evidencia real de validación en la plantilla de PR; el merge es otra decisión.
+
+Se permite trabajo independiente de menor prioridad con un aviso; lo bloqueado
+requiere coordinación. Los bugs y tareas pequeñas sin ODD siguen el flujo habitual.
+Consultar, planificar o revisar una PR no te la asigna.
+
+#### Skill opcional para asistentes
+
+La skill portable vive en [`.agents/skills/odd-contribute/`](./.agents/skills/odd-contribute/SKILL.md).
+En Pi, abre el checkout que la contiene, revisa/acepta los recursos del proyecto
+cuando lo solicite y ejecuta `/reload` y `/skill:odd-contribute`. También puede
+activarse con «quiero contribuir a una issue ODD en Quorb».
+El comando explícito es más fiable; otros agentes pueden leer el mismo contrato.
+Los colaboradores no necesitan skills globales. Sin asistente, sigue los pasos
+anteriores; la skill orienta, no garantiza cumplimiento.
+
+El mantenedor puede usar sus globales `odd-roadmap-plan` y `odd-roadmap-continue`
+para publicar/revisar el roadmap. Después de publicarlo, sustituye el estado
+«aún no publicado» de ambos idiomas por el enlace canónico del índice.
+Refresca `/skill-registry:refresh` cuando esté disponible tras cambiar las skills.
+El índice/caché de skills en `.atl/` es local y Git lo ignora; no es el roadmap oficial.
 
 ### Añadir un proveedor
 
