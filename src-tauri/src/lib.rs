@@ -1,3 +1,4 @@
+mod cli_process;
 mod config;
 mod history;
 mod login;
