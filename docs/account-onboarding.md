@@ -35,13 +35,41 @@ configuración guardada y no cambia su visibilidad.
 ## Requisitos del CLI
 
 Para iniciar sesión en Claude, Codex y Gemini, Quorb usa el login oficial de su
-CLI. Si falta en el equipo, Ajustes muestra el aviso con la orden para
-instalarlo, pero **Quorb no instala nada por ti**: copia la orden y ejecútala tú.
+CLI. Si falta, Ajustes ofrece **Instalar Codex** en Windows para ChatGPT y
+Codex. Claude y Gemini conservan la orden para copiar y ejecutar manualmente.
 
 - Claude Code (`claude`), Codex CLI (`codex`) y Gemini CLI (`gemini`).
 - Quorb los detecta solo (cada pocos segundos o al volver a la ventana).
 - Para conectar Gemini en Quorb, elige «Login with Google» cuando el CLI lo
   pida: esta integración lee las credenciales OAuth guardadas por ese flujo.
+
+### Instalar Codex desde Quorb (Windows)
+
+1. En la cuenta principal o adicional de **ChatGPT y Codex**, pulsa
+   **Instalar Codex**. Una confirmación nativa explica la descarga y su destino;
+   cancelar no instala nada.
+2. Necesitas Node.js 22 o posterior y npm ya instalados, con la misma arquitectura
+   que Quorb (por ejemplo, Node x64 para Quorb x64). Quorb no instala Node,
+   no pide elevación y no cambia tu instalación global de npm ni el PATH del sistema.
+   Descarga el paquete oficial fijado `@openai/codex@0.162.1` desde el registro
+   público de npm, sin ejecutar scripts de instalación de los paquetes.
+3. Espera al resultado. Quorb comprueba el binario y su versión antes de dar la
+   instalación por terminada. Después pulsa **Iniciar sesión** o
+   **Guardar e iniciar sesión**: instalar el CLI no crea una sesión de ChatGPT.
+
+La instalación se guarda en `%USERPROFILE%\.quorb\tools\codex-0.162.1` y se
+comparte entre todas las cuentas ChatGPT/Codex. Sus carpetas de sesión siguen
+separadas; instalar no guarda los cambios del formulario ni abre el login.
+
+| Situación | Qué hacer |
+| --- | --- |
+| Falta Node/npm | Instala el requisito por separado y vuelve a comprobar. Quorb no lo instala automáticamente. |
+| Codex instalado manualmente con Quorb abierto | Vuelve a comprobar; en Windows Quorb también busca en el PATH actualizado del registro, sin cambiar el entorno global. |
+| Prefijo npm personalizado que no está en el PATH | Revisa el comando de login en los ajustes del proveedor y usa la ruta completa entre comillas si contiene espacios. Quorb no inspecciona tu `.npmrc`. |
+| Instalación fallida o **Sin sesión** | Son pasos distintos: primero comprueba el resultado de instalación; después inicia sesión y usa **Comprobación** para validar el acceso. |
+
+Fuera de Windows, usa la instalación manual del
+[CLI oficial](https://developers.openai.com/codex/cli).
 
 ## Cómo se comprueba la conexión
 

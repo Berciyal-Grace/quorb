@@ -1,4 +1,5 @@
 mod cli_process;
+mod codex_setup;
 mod config;
 mod history;
 mod login;
@@ -17,7 +18,7 @@ use tauri::{PhysicalPosition, PhysicalSize};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 const WIDGET: &str = "widget";
 const SETTINGS: &str = "settings";
@@ -289,7 +290,8 @@ async fn check_provider(state: State<'_, AppState>, id: String) -> Result<Option
 }
 
 /// ¿Está instalado el CLI de login de Claude, Codex y Gemini?
-#[tauri::command]
+/// `async` lo saca del hilo principal: consulta el PATH fresco del registro.
+#[tauri::command(async)]
 fn cli_status(state: State<'_, AppState>) -> BTreeMap<String, bool> {
     let cfg = state.config.lock().unwrap().clone();
     login::cli_status(&cfg)
@@ -313,6 +315,54 @@ fn account_session(state: State<'_, AppState>, id: String) -> bool {
 fn open_login(state: State<'_, AppState>, provider: String) -> Result<(), String> {
     let cfg = state.config.lock().unwrap().clone();
     login::open(&provider, &cfg)
+}
+
+/// Estado de solo lectura de la instalación asistida de Codex (sin procesos).
+/// `async` lo saca del hilo principal: hace lecturas de FS/registro al sondear.
+#[tauri::command(async)]
+fn codex_setup_status(state: State<'_, codex_setup::CodexSetupState>) -> codex_setup::CodexSetupStatus {
+    codex_setup::status(state.inner())
+}
+
+/// Instala el CLI de Codex en la carpeta gestionada de Quorb. Solo desde Ajustes,
+/// con confirmación nativa previa y rechazo de invocaciones concurrentes.
+#[tauri::command]
+async fn install_codex(app: AppHandle, window: WebviewWindow) -> Result<codex_setup::CodexInstallResult, String> {
+    let label = window.label().to_string();
+    if !codex_setup::settings_window_ok(&label) {
+        return Err(codex_setup::MSG_WRONG_WINDOW.to_string());
+    }
+    // Todo el trabajo (diálogo nativo, procesos) va en un hilo bloqueante para no
+    // congelar el hilo principal de la interfaz.
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+        let state = app.state::<codex_setup::CodexSetupState>();
+        let platform = codex_setup::Platform::current();
+        let node = codex_setup::discover_node_in(&codex_setup::node_search_roots(platform));
+        let tools_root = codex_setup::tools_root(&providers::home());
+        let base_env = codex_setup::process_env_map();
+        let confirm = || {
+            app.dialog()
+                .message(codex_setup::CONSENT_MESSAGE)
+                .title("Instalar Codex")
+                .kind(MessageDialogKind::Info)
+                .buttons(MessageDialogButtons::OkCancelCustom("Instalar".into(), "Cancelar".into()))
+                // Dueño nativo: la confirmación se ancla a la ventana de Ajustes.
+                .parent(&window)
+                .blocking_show()
+        };
+        codex_setup::install_codex_flow(
+            state.inner(),
+            platform,
+            node.as_ref(),
+            &tools_root,
+            &base_env,
+            &codex_setup::ProcessRunner,
+            &confirm,
+        )
+    })
+    .await
+    .map_err(|_| codex_setup::MSG_GENERIC_ERROR.to_string())?
 }
 
 // Async: crear ventanas desde un comando síncrono puede bloquearse en Windows.
@@ -529,6 +579,7 @@ pub fn run() {
             let _ = overlay.set_ignore_cursor_events(true);
 
             app.manage(Shortcuts::default());
+            app.manage(codex_setup::CodexSetupState::default());
             apply_shortcuts(app.handle(), &cfg.shortcuts);
             app.manage(AppState {
                 config: Mutex::new(cfg),
@@ -564,6 +615,8 @@ pub fn run() {
             set_secret,
             fetch_usage,
             open_login,
+            codex_setup_status,
+            install_codex,
             session_stamp,
             account_session,
             cli_status,

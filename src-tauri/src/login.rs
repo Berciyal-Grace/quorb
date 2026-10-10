@@ -72,9 +72,10 @@ enum Found {
     Missing,
 }
 
-/// Busca `program` inyectando PATH, carpetas conocidas, plataforma y PATHEXT para
-/// poder probarlo sin tocar el entorno real.
-fn find_program_in(program: &str, path_dirs: &[PathBuf], known_dirs: &[PathBuf], windows: bool, pathext: &str) -> Found {
+/// Busca `program` en dos niveles: primero el PATH heredado (`OnPath`) y,
+/// después, el PATH fresco del registro y las carpetas conocidas (`In`), para
+/// que `open` pueda anteponer la carpeta encontrada sin tocar el entorno global.
+fn find_program_tiers(program: &str, legacy: &[PathBuf], fresh: &[PathBuf], known: &[PathBuf], windows: bool, pathext: &str) -> Found {
     if program.is_empty() {
         return Found::Missing;
     }
@@ -82,19 +83,39 @@ fn find_program_in(program: &str, path_dirs: &[PathBuf], known_dirs: &[PathBuf],
     if p.is_absolute() || program.contains(['\\', '/']) {
         return if p.is_file() { Found::OnPath } else { Found::Missing };
     }
-    if path_dirs.iter().any(|d| dir_has_program(d, program, windows, pathext)) {
+    if legacy.iter().any(|d| dir_has_program(d, program, windows, pathext)) {
         return Found::OnPath;
     }
-    known_dirs
+    if let Some(dir) = fresh.iter().find(|d| dir_has_program(d, program, windows, pathext)) {
+        return Found::In(dir.clone());
+    }
+    known
         .iter()
         .find(|d| dir_has_program(d, program, windows, pathext))
         .cloned()
         .map_or(Found::Missing, Found::In)
 }
 
+/// Variante inyectable sin PATH fresco (solo pruebas).
+#[cfg(test)]
+fn find_program_in(program: &str, path_dirs: &[PathBuf], known_dirs: &[PathBuf], windows: bool, pathext: &str) -> Found {
+    find_program_tiers(program, path_dirs, &[], known_dirs, windows, pathext)
+}
+
 fn find_program(program: &str) -> Found {
-    let path_dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
-    find_program_in(program, &path_dirs, &known_dirs(), cfg!(windows), &pathext_env())
+    let legacy: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+    find_program_tiers(program, &legacy, &fresh_path_dirs(), &known_dirs(), cfg!(windows), &pathext_env())
+}
+
+/// PATH fresco leído del registro (solo Windows); vacío en el resto.
+fn fresh_path_dirs() -> Vec<PathBuf> {
+    crate::codex_setup::fresh_windows_path_dirs()
+}
+
+/// ¿Hay un `codex` en PATH o carpetas conocidas? Es un metadato de instalación,
+/// no la salud de la sesión.
+pub fn codex_cli_found() -> bool {
+    !matches!(find_program("codex"), Found::Missing)
 }
 
 /// PATHEXT del sistema; vacío fuera de Windows (allí no aplica).
@@ -121,7 +142,8 @@ fn dir_has_program(dir: &Path, program: &str, windows: bool, pathext: &str) -> b
     program_candidates(program, windows, pathext).iter().any(|name| dir.join(name).is_file())
 }
 
-/// Carpetas donde suelen quedar los CLIs: npm global y el instalador nativo de Claude Code.
+/// Carpetas donde suelen quedar los CLIs: npm global, el instalador nativo de
+/// Claude Code y el binario de Codex gestionado por Quorb.
 fn known_dirs() -> Vec<PathBuf> {
     let mut dirs = vec![];
     if let Some(appdata) = std::env::var_os("APPDATA") {
@@ -130,6 +152,8 @@ fn known_dirs() -> Vec<PathBuf> {
     let home = crate::providers::home();
     dirs.push(home.join(".local").join("bin"));
     dirs.push(home.join(".npm-global").join("bin"));
+    // `codex.exe` nativo que instala Quorb, sin depender de Node ni del PATH.
+    dirs.extend(crate::codex_setup::managed_native_dirs(&home));
     dirs
 }
 
@@ -146,9 +170,12 @@ fn not_installed(provider: &str, program: &str) -> String {
 /// Variable de entorno con la carpeta de sesión de una cuenta adicional.
 type SessionEnv = Option<(&'static str, std::path::PathBuf)>;
 
-/// Antepone al PATH la carpeta donde se encontró el CLI (si no estaba en el PATH).
+/// Antepone al PATH la carpeta donde se encontró el CLI (si no estaba en el PATH),
+/// incluyendo el PATH fresco del registro para que la terminal nueva lo vea.
 fn path_with(extra: Option<PathBuf>) -> Option<std::ffi::OsString> {
-    path_with_current(extra, std::env::var_os("PATH"))
+    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+    dirs.extend(fresh_path_dirs());
+    path_with_current(extra, std::env::join_paths(dirs).ok())
 }
 
 /// Antepone `extra` a `current` (el PATH actual) sin tocar el entorno real.
@@ -282,6 +309,41 @@ mod tests {
 
         assert_eq!(find_program_in("codex", &[], &[], false, ""), Found::Missing);
         assert_eq!(find_program_in("", &[path_dir.path().to_path_buf()], &[], false, ""), Found::Missing);
+    }
+
+    #[test]
+    fn find_program_tiers_prefers_legacy_then_fresh_then_known() {
+        let legacy = TempDir::new("tier-legacy");
+        let fresh = TempDir::new("tier-fresh");
+        let known = TempDir::new("tier-known");
+        std::fs::write(fresh.path().join("codex"), b"").unwrap();
+        std::fs::write(known.path().join("codex"), b"").unwrap();
+        // Sin PATH heredado, el fresco se marca como In para poder anteponerlo.
+        assert_eq!(
+            find_program_tiers("codex", &[], &[fresh.path().to_path_buf()], &[known.path().to_path_buf()], false, ""),
+            Found::In(fresh.path().to_path_buf())
+        );
+        // El PATH heredado gana y es OnPath.
+        std::fs::write(legacy.path().join("codex"), b"").unwrap();
+        assert_eq!(
+            find_program_tiers(
+                "codex",
+                &[legacy.path().to_path_buf()],
+                &[fresh.path().to_path_buf()],
+                &[known.path().to_path_buf()],
+                false,
+                ""
+            ),
+            Found::OnPath
+        );
+    }
+
+    #[test]
+    fn known_dirs_include_the_managed_native_binary_location() {
+        let dirs = known_dirs();
+        let managed = crate::codex_setup::managed_native_dirs(&crate::providers::home());
+        assert!(!managed.is_empty());
+        assert!(managed.iter().all(|d| dirs.contains(d)));
     }
 
     #[test]
