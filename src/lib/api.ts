@@ -21,6 +21,12 @@ export const api = {
   openLogin: (provider: string) => invoke<void>('open_login', { provider }),
   /** Cambia cuando un CLI renueva su sesión (fechas de sus ficheros de credenciales) */
   sessionStamp: () => invoke<number>('session_stamp'),
+  /**
+   * ¿Existe ya el fichero de credenciales de esta cuenta? Solo presencia del
+   * fichero: no valida que la sesión guardada siga sirviendo. Comando
+   * `account_session` del backend.
+   */
+  accountSessionFileExists: (id: string) => invoke<boolean>('account_session', { id }),
   openSettings: () => invoke<void>('open_settings'),
   showDetail: () => invoke<boolean>('show_detail'),
   setTrayTooltip: (text: string) => invoke<void>('set_tray_tooltip', { text }),

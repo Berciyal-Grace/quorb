@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Account, AppConfig, SecretStatus } from './types';
 import type { AutostartApplyOutcome } from './autostart-controller';
 import { accountReady } from './accounts';
-import { mixedSaveMessage, reloadSecretsAfterSave, runMixedSave, type MixedSaveDeps, type MixedSaveInput, type MixedSaveResult } from './settings-save';
+import { configPersistedAfterSave, mixedSaveMessage, reloadSecretsAfterSave, runMixedSave, type MixedSaveDeps, type MixedSaveInput, type MixedSaveResult } from './settings-save';
 
 const config = (over: Record<string, unknown> = {}) =>
   ({ refreshMinutes: 5, orbSize: 48, accentColor: '#ff0036', ...over }) as unknown as AppConfig;
@@ -123,6 +123,25 @@ describe('reloadSecretsAfterSave', () => {
     expect(await reloadSecretsAfterSave({ status: 'failed', message: 'write failed' }, reload)).toBeNull();
     expect(await reloadSecretsAfterSave({ status: 'skipped' }, reload)).toBeNull();
     expect(reload).not.toHaveBeenCalled();
+  });
+});
+
+describe('configPersistedAfterSave', () => {
+  it('da la config por persistida aunque el autostart falle', () => {
+    // Con la config guardada, un fallo del sistema operativo no debe bloquear
+    // el login: la cuenta ya está donde el CLI la busca.
+    expect(configPersistedAfterSave(result({ status: 'saved', saved: config() }, { status: 'failed', outcome: failure('denied') }))).toBe(true);
+  });
+
+  it('da la config por persistida si no había cambios que guardar', () => {
+    // `skipped` deja la config tal cual estaba: sigue siendo la persistida.
+    expect(configPersistedAfterSave(result({ status: 'skipped' }, { status: 'failed', outcome: failure('denied') }))).toBe(true);
+    expect(configPersistedAfterSave(result({ status: 'skipped' }, { status: 'confirmed' }))).toBe(true);
+  });
+
+  it('no da la config por persistida si su parte falló', () => {
+    expect(configPersistedAfterSave(result({ status: 'failed', message: 'write failed' }, { status: 'confirmed' }))).toBe(false);
+    expect(configPersistedAfterSave(result({ status: 'failed', message: 'write failed' }, { status: 'skipped' }))).toBe(false);
   });
 });
 

@@ -438,3 +438,13 @@ button.q-provider { display: flex; flex-direction: column; width: 100%; font: in
   .q-nav-toggle { display: none; }
   .q-settings[data-nav-collapsed] .q-settings__nav .eg-menu__label { opacity: 1; }
 }
+
+/* Pasos para conectar una cuenta adicional */
+.q-steps { list-style: none; margin: 0; padding: 0; counter-reset: q-step; display: flex; flex-direction: column; }
+.q-steps > li { counter-increment: q-step; position: relative; display: flex; flex-direction: column; gap: 4px; padding: 0 0 18px 40px; color: var(--color-fg-secondary); font-size: 14px; line-height: 1.5; }
+.q-steps > li:last-child { padding-bottom: 0; }
+.q-steps > li::before { content: counter(q-step); position: absolute; left: 0; top: -2px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: var(--color-surface-3); box-shadow: 0 0 0 1px var(--color-border-hairline); color: var(--color-fg-default); font: 700 13px/1 var(--font-sans); }
+.q-steps > li:not(:last-child)::after { content: ''; position: absolute; left: 12.5px; top: 28px; bottom: 2px; width: 1px; background: var(--color-border-hairline); }
+.q-steps > li[data-done]::before { content: '✓'; background: color-mix(in srgb, var(--color-status-success) 22%, var(--color-surface-2)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-status-success) 55%, transparent); color: var(--color-status-success); }
+.q-steps b { color: var(--color-fg-default); font-weight: 600; }
+.q-steps__actions { display: flex; gap: 8px; margin-top: 6px; }

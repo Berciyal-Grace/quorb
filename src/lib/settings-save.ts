@@ -81,6 +81,16 @@ export async function runMixedSave(input: MixedSaveInput, deps: MixedSaveDeps): 
 }
 
 /**
+ * ¿Se puede dar por persistida la config tras un guardado mixto? Solo `false`
+ * si la parte de config falló. `saved` quedó escrita y `skipped` (no había
+ * cambios) deja la config tal cual estaba: en ambos casos el login por CLI
+ * puede buscar la cuenta. El resultado del autostart no afecta a esta decisión.
+ */
+export function configPersistedAfterSave(result: MixedSaveResult): boolean {
+  return result.config.status !== 'failed';
+}
+
+/**
  * Mensaje para el usuario a partir del resultado real de cada parte. Nunca
  * presenta una parte omitida como guardada y nunca da un éxito conjunto falso:
  * nombra exactamente lo que se confirmó y lo que falló, con su error.

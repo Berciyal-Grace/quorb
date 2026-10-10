@@ -279,6 +279,24 @@ fn session_stamp(state: State<'_, AppState>) -> u64 {
     providers::session_stamp(&cfg)
 }
 
+/// ¿Existe el fichero de credenciales de esa cuenta en `home`? Solo presencia
+/// del fichero: no valida que la sesión guardada siga sirviendo.
+fn account_session_file_found(cfg: &AppConfig, id: &str, home: &std::path::Path) -> bool {
+    cfg.accounts
+        .iter()
+        .find(|a| a.id == id)
+        .and_then(|a| a.credentials_file(home))
+        .is_some_and(|p| p.is_file())
+}
+
+/// ¿Hay fichero de sesión del CLI para una cuenta adicional? `true` es presencia,
+/// no validez de la sesión.
+#[tauri::command]
+fn account_session(state: State<'_, AppState>, id: String) -> bool {
+    let cfg = state.config.lock().unwrap().clone();
+    account_session_file_found(&cfg, &id, &providers::home())
+}
+
 #[tauri::command]
 fn open_login(state: State<'_, AppState>, provider: String) -> Result<(), String> {
     let cfg = state.config.lock().unwrap().clone();
@@ -535,6 +553,7 @@ pub fn run() {
             fetch_usage,
             open_login,
             session_stamp,
+            account_session,
             open_settings,
             show_detail,
             set_tray_tooltip,
@@ -548,4 +567,66 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error al arrancar Quorb");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Account;
+
+    /// Carpeta temporal propia de cada prueba: sin dependencias nuevas y sin
+    /// tocar ninguna ruta real del usuario.
+    fn temp_home(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("quorb-account-session-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn account_with_dir(provider: &str, dir: &std::path::Path) -> Account {
+        Account {
+            id: format!("{provider}:w1"),
+            provider: provider.into(),
+            config_dir: Some(dir.to_string_lossy().into_owned()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn account_session_ignores_unknown_accounts() {
+        let home = temp_home("unknown");
+        assert!(!account_session_file_found(&AppConfig::default(), "claude:w1", &home));
+        let cfg = AppConfig { accounts: vec![account_with_dir("claude", &home)], ..Default::default() };
+        assert!(!account_session_file_found(&cfg, "claude:otra", &home));
+    }
+
+    #[test]
+    fn account_session_is_file_presence_not_validity() {
+        let home = temp_home("presence");
+        let dir = home.join("claude-w1");
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg = AppConfig { accounts: vec![account_with_dir("claude", &dir)], ..Default::default() };
+        let file = dir.join(".credentials.json");
+
+        // Sin fichero: no hay nada.
+        assert!(!account_session_file_found(&cfg, "claude:w1", &home));
+        // Un directorio con ese nombre tampoco es una sesión.
+        std::fs::create_dir(&file).unwrap();
+        assert!(!account_session_file_found(&cfg, "claude:w1", &home));
+        std::fs::remove_dir(&file).unwrap();
+        // Fichero vacío: presencia, no validez de la sesión.
+        std::fs::write(&file, b"").unwrap();
+        assert!(account_session_file_found(&cfg, "claude:w1", &home));
+    }
+
+    #[test]
+    fn account_session_without_cli_credentials_is_always_false() {
+        let home = temp_home("nocreds");
+        let dir = home.join("openrouter-w1");
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg = AppConfig { accounts: vec![account_with_dir("openrouter", &dir)], ..Default::default() };
+        // OpenRouter no usa sesión de CLI: ni con ficheros en la carpeta hay presencia.
+        std::fs::write(dir.join("auth.json"), b"{}").unwrap();
+        assert!(!account_session_file_found(&cfg, "openrouter:w1", &home));
+    }
 }

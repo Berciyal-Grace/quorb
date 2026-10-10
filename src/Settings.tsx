@@ -10,7 +10,8 @@ import { ACCOUNT_SECRETS, SESSION_DIR, accountReady, accountsOf, defaultSessionD
 import { ACCENT_PRESETS, DEFAULT_ACCENT, derivePalette, normalizeHex } from './lib/palette';
 import { isDirty, isSettingsDirty, liveSaveConfig, reconcileSaved } from './lib/settings-dirty';
 import { createAutostartController } from './lib/autostart-controller';
-import { runMixedSave, mixedSaveMessage, reloadSecretsAfterSave } from './lib/settings-save';
+import { configPersistedAfterSave, runMixedSave, mixedSaveMessage, reloadSecretsAfterSave } from './lib/settings-save';
+import { openAccountLogin } from './lib/account-login';
 import { comboFromEvent, prettyCombo } from './lib/shortcuts';
 import { ProviderLogo } from './components/ProviderLogo';
 import quorbLogo from './assets/quorb-logo.png';
@@ -473,10 +474,19 @@ function AccountEditor({
   onRemove,
   onSecrets,
   onError,
+  onSave,
+  saving,
+  loginCommand,
 }: {
   account: Account;
   /** Ya está guardada tal cual en el backend (necesario para abrir su login). */
   persisted: boolean;
+  /** Guarda los cambios pendientes y confirma si la config quedó persistida. */
+  onSave: () => Promise<boolean>;
+  /** Comando de login del proveedor (el de la cuenta principal). */
+  loginCommand: string;
+  /** Hay un guardado de Ajustes en curso: el botón no debe solaparse. */
+  saving: boolean;
   secrets: SecretStatus;
   onChange: (patch: Partial<Account>) => void;
   onRemove: () => void;
@@ -485,6 +495,40 @@ function AccountEditor({
 }) {
   const key = (k: SecretKey) => secretKey(k, a.id);
   const session = SESSION_DIR[a.provider];
+  // Presencia del fichero de sesión del CLI, no validez de la sesión.
+  const [sessionFileFound, setSessionFileFound] = useState(false);
+  const [busy, setBusy] = useState(false);
+  // ¿Ya dejó el CLI su fichero en la carpeta de la cuenta? Se comprueba mientras
+  // el editor está abierto para reflejarlo en cuanto termina el login.
+  useEffect(() => {
+    if (!session || !persisted) {
+      setSessionFileFound(false);
+      return;
+    }
+    let alive = true;
+    const check = () =>
+      api
+        .accountSessionFileExists(a.id)
+        .then((v) => alive && setSessionFileFound(v))
+        .catch(() => {});
+    check();
+    const t = window.setInterval(check, 3000);
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+    };
+  }, [a.id, persisted, session]);
+  const connect = async () => {
+    setBusy(true);
+    try {
+      // Si la cuenta no está persistida, guarda antes; sin confirmación no abre.
+      await openAccountLogin(persisted, { save: onSave, open: () => api.openLogin(a.id) });
+    } catch (e) {
+      onError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <Section kicker="Cuenta adicional" title={a.label}>
       <div className="q-cols">
@@ -496,20 +540,48 @@ function AccountEditor({
 
       {session && (
         <>
-          <p className="q-note">
-            Esta cuenta tiene su propia carpeta de sesión, así no toca la principal. «Iniciar sesión» abre el login oficial con{' '}
-            <code>{session.env}</code> apuntando a esa carpeta. Quorb no renueva el token: si sale caducada, vuelve a abrir el CLI con esa
-            variable.
-          </p>
-          <Field label="Carpeta de sesión" hint={<>Vacío = <code>{defaultSessionDir(a)}</code>. Puedes usar una que ya tengas. Quorb lee <code>{session.file}</code> dentro de ella.</>}>
-            <input type="text" spellCheck={false} value={a.configDir ?? ''} placeholder={defaultSessionDir(a)} onChange={(e) => onChange({ configDir: strOrNull(e.target.value) })} />
-          </Field>
-          <div className="q-inline">
-            <button className="eg-btn eg-btn--primary" disabled={!persisted} onClick={() => api.openLogin(a.id).catch((e) => onError(String(e)))}>
-              Iniciar sesión
-            </button>
-            {!persisted && <span className="q-note">Guarda los cambios para poder iniciar sesión.</span>}
-          </div>
+          <ol className="q-steps" aria-label="Cómo conectar esta cuenta">
+            <li data-done={a.label.trim() !== '' || undefined}>
+              <b>Ponle nombre</b>
+              <span>Arriba, para distinguirla de la principal en la tira (por ejemplo, «Trabajo»).</span>
+            </li>
+            <li>
+              <b>Inicia sesión con la otra cuenta</b>
+              <span>
+                Se abre una terminal con <code>{loginCommand}</code>
+                {a.provider === 'claude' && <> (si no te lo pide, escribe <code>/login</code>)</>}. En el navegador entra con la cuenta que
+                quieres añadir, no con la principal: si el navegador ya tiene abierta la principal, usa una ventana privada.
+              </span>
+              <span className="q-steps__actions">
+                <button
+                  className={`eg-btn ${sessionFileFound ? 'eg-btn--secondary' : 'eg-btn--primary'}`}
+                  disabled={busy || saving}
+                  onClick={connect}
+                >
+                  {sessionFileFound ? 'Volver a iniciar sesión' : persisted ? 'Iniciar sesión' : 'Guardar e iniciar sesión'}
+                </button>
+              </span>
+            </li>
+            <li data-done={sessionFileFound || undefined}>
+              {/* Presencia del fichero, no validez: no se afirma que la sesión esté «conectada». */}
+              <b>{sessionFileFound ? 'Fichero de sesión encontrado' : 'Esperando fichero de sesión'}</b>
+              <span>
+                {sessionFileFound
+                  ? 'El fichero existe, pero no confirma que la sesión sea válida; comprueba el estado en el widget.'
+                  : 'Quorb comprueba si aparece el fichero del CLI. Cuando lo encuentre, revisa el estado en el widget.'}
+              </span>
+            </li>
+          </ol>
+          <details className="q-details">
+            <summary>Avanzado · carpeta de sesión</summary>
+            <p className="q-note">
+              Cada cuenta guarda su sesión en su propia carpeta, así no toca la principal: el login se abre con <code>{session.env}</code>{' '}
+              apuntando a ella. Si el widget pide renovar la sesión, «Renovar sesión» vuelve a abrir el login del CLI.
+            </p>
+            <Field label="Carpeta de sesión" hint={<>Vacío = <code>{defaultSessionDir(a)}</code>. Puedes usar una que ya tengas. Quorb lee <code>{session.file}</code> dentro de ella.</>}>
+              <input type="text" spellCheck={false} value={a.configDir ?? ''} placeholder={defaultSessionDir(a)} onChange={(e) => onChange({ configDir: strOrNull(e.target.value) })} />
+            </Field>
+          </details>
         </>
       )}
 
@@ -882,8 +954,10 @@ export function Settings() {
   const changeOrbSize = (v: number) => liveSave({ orbSize: v });
   const changeAccent = (hex: string) => liveSave({ accentColor: normalizeHex(hex) });
 
-  const save = async () => {
-    if (savingRef.current) return;
+  const save = async (): Promise<boolean> => {
+    // Un guardado ya en marcha no confirma nada: quien espere para abrir un
+    // login recibe `false` y no abre la cuenta antes de que esté persistida.
+    if (savingRef.current) return false;
     savingRef.current = true;
     setSaving(true);
     const snapshot = cfg; // lo que se envía; puede quedar obsoleto durante el await
@@ -891,6 +965,7 @@ export function Settings() {
     const cfgDirtyNow = isDirty(baseline, snapshot);
     const autostartDirtyNow = autostartState.confirmed !== null && desired !== null && desired !== autostartState.confirmed;
     let message: string | null = null;
+    let persisted = false;
     try {
       const result = await runMixedSave(
         {
@@ -904,8 +979,11 @@ export function Settings() {
           applyAutostart: (d) => autostartController.apply(d),
         },
       );
+      // Guardada o sin cambios que guardar: la config persistida es la misma.
+      // Un fallo del autostart no impide abrir el login de la cuenta.
+      persisted = configPersistedAfterSave(result);
       // El backend ya escribió; si el componente se desmontó a mitad, no tocamos UI.
-      if (!aliveRef.current) return;
+      if (!aliveRef.current) return false;
       if (result.config.status === 'saved') {
         const savedCfg = result.config.saved;
         // No descartes ediciones hechas mientras se guardaba: adopta lo canónico
@@ -917,7 +995,7 @@ export function Settings() {
           // guardada antes de crear la cuenta deja el proveedor en «Falta conectar».
           reloadSecretsAfterSave(result.config, () => api.secretStatus()).catch(() => null),
         ]);
-        if (!aliveRef.current) return;
+        if (!aliveRef.current) return false;
         setShortcutErrors(errors);
         if (status) setSecrets(status);
       }
@@ -925,6 +1003,7 @@ export function Settings() {
       message = mixedSaveMessage(result);
       setSaved(message);
     } catch (e) {
+      persisted = false;
       if (aliveRef.current) {
         message = String(e);
         setSaved(message);
@@ -937,6 +1016,7 @@ export function Settings() {
         if (message) savedTimer.current = window.setTimeout(() => setSaved(null), 2500);
       }
     }
+    return persisted;
   };
 
   const tabAccounts = accountsOf(cfg, tab);
@@ -1178,6 +1258,13 @@ export function Settings() {
           onRemove={() => removeAccount(selAccount)}
           onSecrets={loadSecrets}
           onError={setSaved}
+          onSave={save}
+          saving={saving}
+          loginCommand={
+            selAccount.provider === 'claude' || selAccount.provider === 'codex' || selAccount.provider === 'gemini'
+              ? cfg[selAccount.provider].loginCommand
+              : ''
+          }
         />
       )}
       {!selAccount && (
