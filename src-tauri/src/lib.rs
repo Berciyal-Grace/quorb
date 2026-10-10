@@ -279,13 +279,6 @@ fn session_stamp(state: State<'_, AppState>) -> u64 {
     providers::session_stamp(&cfg)
 }
 
-/// ¿Hay sesión del CLI guardada para una cuenta adicional? (existe su fichero de credenciales)
-#[tauri::command]
-fn account_session(state: State<'_, AppState>, id: String) -> bool {
-    let cfg = state.config.lock().unwrap().clone();
-    providers::session_file(&cfg, &id).is_some_and(|p| p.is_file())
-}
-
 /// Comprueba la conexión de una cuenta (principal o adicional) con la config guardada,
 /// aunque esté oculta en el widget. `None` si el id no existe.
 #[tauri::command]
@@ -299,6 +292,12 @@ async fn check_provider(state: State<'_, AppState>, id: String) -> Result<Option
 fn cli_status(state: State<'_, AppState>) -> BTreeMap<String, bool> {
     let cfg = state.config.lock().unwrap().clone();
     login::cli_status(&cfg)
+}
+
+/// ¿Existe el fichero de sesión de una cuenta? `home` se inyecta para poder
+/// probar con carpetas propias; `true` es presencia, no validez de la sesión.
+fn account_session_file_found(cfg: &AppConfig, id: &str, home: &std::path::Path) -> bool {
+    providers::session_file(cfg, id, home).is_some_and(|p| p.is_file())
 }
 
 /// ¿Hay fichero de sesión del CLI para una cuenta adicional? `true` es presencia,

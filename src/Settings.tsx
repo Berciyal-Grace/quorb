@@ -12,6 +12,7 @@ import { isDirty, isSettingsDirty, liveSaveConfig, reconcileSaved } from './lib/
 import { createAutostartController } from './lib/autostart-controller';
 import { configPersistedAfterSave, runMixedSave, mixedSaveMessage, reloadSecretsAfterSave } from './lib/settings-save';
 import { openAccountLogin } from './lib/account-login';
+import { createPresencePoller, effectivePersisted, isConnectionDirty } from './lib/account-health';
 import { comboFromEvent, prettyCombo } from './lib/shortcuts';
 import { ProviderLogo } from './components/ProviderLogo';
 import quorbLogo from './assets/quorb-logo.png';
@@ -466,44 +467,6 @@ const numOrNull = (s: string) => {
 };
 const strOrNull = (s: string) => (s.trim() === '' ? null : s);
 
-/** Configuración de una cuenta adicional: nombre, si se muestra y cómo se conecta. */
-function AccountEditor({
-  account: a,
-  persisted,
-  secrets,
-  onChange,
-  onRemove,
-  onSecrets,
-  onError,
-  onSave,
-  saving,
-  loginCommand,
-}: {
-  account: Account;
-  /** Ya está guardada tal cual en el backend (necesario para abrir su login). */
-  persisted: boolean;
-  /** Guarda los cambios pendientes y confirma si la config quedó persistida. */
-  onSave: () => Promise<boolean>;
-  /** Comando de login del proveedor (el de la cuenta principal). */
-  loginCommand: string;
-  /** Hay un guardado de Ajustes en curso: el botón no debe solaparse. */
-  saving: boolean;
-  secrets: SecretStatus;
-  onChange: (patch: Partial<Account>) => void;
-  onRemove: () => void;
-  onSecrets: () => void;
-  onError: (msg: string) => void;
-}) {
-  const key = (k: SecretKey) => secretKey(k, a.id);
-  const session = SESSION_DIR[a.provider];
-  // Presencia del fichero de sesión del CLI, no validez de la sesión.
-  const [sessionFileFound, setSessionFileFound] = useState(false);
-  const [busy, setBusy] = useState(false);
-  // ¿Ya dejó el CLI su fichero en la carpeta de la cuenta? Se comprueba mientras
-  // el editor está abierto para reflejarlo en cuanto termina el login.
-  useEffect(() => {
-    if (!session || !persisted) {
-      setSessionFileFound(false);
 /** Aviso de que falta el CLI con el que se inicia sesión, con la orden para instalarlo. */
 function CliMissing({ provider }: { provider: AccountProvider }) {
   const how = CLI_INSTALL[provider];
@@ -543,7 +506,10 @@ type HealthProps = {
   dirty: boolean;
   /** Oculta en el widget (se comprueba igual). */
   hidden: boolean;
-  onSave: () => Promise<void>;
+  /** Hay un guardado en curso: evita solapar «Conectar» y «Guardar y comprobar». */
+  saving: boolean;
+  /** Guarda y confirma (`true`) si la config quedó persistida. */
+  onSave: () => Promise<boolean>;
 };
 
 type Health = { phase: 'checking' } | { phase: 'done'; report: UsageReport | null } | { phase: 'failed'; error: string };
@@ -563,17 +529,25 @@ function healthSummary(r: UsageReport): string {
  * Último paso de cada proveedor y cuenta: consulta la cuenta con lo guardado y dice si
  * funciona y, si no, por qué (sesión caducada, clave rechazada, falta un dato…).
  */
-function HealthStep({ id, saved, secretsSig, dirty, hidden, onSave, refreshKey }: HealthProps & { id: string; refreshKey?: unknown }) {
+function HealthStep({ id, saved, secretsSig, dirty, hidden, saving, onSave, refreshKey }: HealthProps & { id: string; refreshKey?: unknown }) {
   const [h, setH] = useState<Health>({ phase: 'checking' });
   const [busy, setBusy] = useState(false);
   const seq = useRef(0);
+  // Marca de montaje: una respuesta que llegue tras desmontar no toca el estado.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const run = useCallback(() => {
     const n = ++seq.current;
     setH({ phase: 'checking' });
     api
       .checkProvider(id)
-      .then((report) => n === seq.current && setH({ phase: 'done', report }))
-      .catch((e) => n === seq.current && setH({ phase: 'failed', error: String(e) }));
+      .then((report) => alive.current && n === seq.current && setH({ phase: 'done', report }))
+      .catch((e) => alive.current && n === seq.current && setH({ phase: 'failed', error: String(e) }));
   }, [id]);
   // Al abrir, al guardar, al cambiar una clave o al aparecer la sesión del CLI.
   useEffect(() => {
@@ -602,7 +576,13 @@ function HealthStep({ id, saved, secretsSig, dirty, hidden, onSave, refreshKey }
     warn: r?.status === 'needsLogin' ? 'Sin sesión' : 'Atención',
     error: 'No funciona',
   }[state];
-  const message = h.phase === 'failed' ? h.error : !r ? 'Guarda los cambios para comprobar esta cuenta.' : r.message;
+  // El fallo de la comprobación no pisa el diagnóstico del guardado (vive en `saved`).
+  const message =
+    h.phase === 'failed'
+      ? `No se pudo comprobar ahora: ${h.error}. Vuelve a intentarlo.`
+      : !r
+        ? 'Guarda los cambios para comprobar esta cuenta.'
+        : r.message;
 
   return (
     <li data-done={state === 'ok' || undefined} data-state={state} aria-live="polite">
@@ -625,7 +605,7 @@ function HealthStep({ id, saved, secretsSig, dirty, hidden, onSave, refreshKey }
           <button
             type="button"
             className="eg-btn eg-btn--secondary eg-btn--sm"
-            disabled={busy}
+            disabled={busy || saving}
             onClick={() => {
               setBusy(true);
               onSave().finally(() => setBusy(false));
@@ -651,20 +631,14 @@ function useCliSession(id: string, active: boolean): boolean {
       setConnected(false);
       return;
     }
-    let alive = true;
-    const check = () =>
-      api
-        .accountSessionFileExists(a.id)
-        .then((v) => alive && setSessionFileFound(v))
-        .accountSession(id)
-        .then((v) => alive && setConnected(v))
-        .catch(() => {});
-    check();
-    const t = window.setInterval(check, 3000);
-    return () => {
-      alive = false;
-      window.clearInterval(t);
-    };
+    // Presencia del fichero, no validez: al desmontar se para el sondeo y las
+    // respuestas en vuelo se descartan (no marca conectada otra cuenta).
+    const poller = createPresencePoller({
+      exists: () => api.accountSessionFileExists(id),
+      onResult: setConnected,
+    });
+    poller.start();
+    return () => poller.stop();
   }, [id, active]);
   return connected;
 }
@@ -699,12 +673,15 @@ function CliConnect({
     setBusy(true);
     setLoginError(null);
     try {
-      // Si la cuenta no está persistida, guarda antes; sin confirmación no abre.
-      await openAccountLogin(persisted, { save: onSave, open: () => api.openLogin(a.id) });
-      if (!persisted || health.dirty) await health.onSave();
-      await api.openLogin(id);
+      // El CLI busca la config guardada: si hay cambios pendientes (o la cuenta no
+      // está guardada), `openAccountLogin` guarda antes y solo abre con una
+      // confirmación explícita (`true`). Sin ella no hay login ni comprobación.
+      await openAccountLogin(effectivePersisted(persisted, health.dirty), {
+        save: health.onSave,
+        open: () => api.openLogin(id),
+      });
     } catch (e) {
-      // Se queda en el paso hasta el siguiente intento.
+      // Se queda en el paso hasta el siguiente intento y conserva el diagnóstico.
       setLoginError(String(e));
     } finally {
       setBusy(false);
@@ -720,17 +697,18 @@ function CliConnect({
         </li>
       )}
       <li data-done={connected || undefined}>
-        <b>{extra ? 'Inicia sesión con la otra cuenta' : connected ? 'Sesión iniciada' : 'Inicia sesión'}</b>
+        <b>{connected ? 'Fichero de sesión encontrado' : extra ? 'Inicia sesión con la otra cuenta' : 'Inicia sesión'}</b>
         <span>
           Se abre una terminal con <code>{loginCommand}</code>
           {provider === 'claude' && <> (si no te lo pide, escribe <code>/login</code>)</>}
           {provider === 'gemini' && <> (elige «Login with Google»)</>}. El navegador hace el login oficial y el CLI guarda la sesión, que
           Quorb solo lee.
+          {connected && ' El fichero existe, pero no confirma que la sesión siga siendo válida: míralo en la comprobación de abajo.'}
           {extra && ' Entra con la cuenta que quieres añadir, no con la principal: si el navegador ya tiene abierta la principal, usa una ventana privada.'}
         </span>
         <span className="q-steps__actions">
-          <button className={`eg-btn ${connected ? 'eg-btn--secondary' : 'eg-btn--primary'}`} disabled={busy || cliMissing} onClick={connect}>
-            {connected ? 'Volver a iniciar sesión' : persisted && !health.dirty ? 'Iniciar sesión' : 'Guardar e iniciar sesión'}
+          <button className={`eg-btn ${connected ? 'eg-btn--secondary' : 'eg-btn--primary'}`} disabled={busy || cliMissing || health.saving} onClick={connect}>
+            {connected ? 'Volver a abrir el login' : effectivePersisted(persisted, health.dirty) ? 'Iniciar sesión' : 'Guardar e iniciar sesión'}
           </button>
         </span>
         {loginError && (
@@ -787,7 +765,7 @@ function AccountEditor({
       <b>Comprobación</b>
       <span>Guarda la cuenta para comprobar que funciona.</span>
       <span className="q-steps__actions">
-        <button type="button" className="eg-btn eg-btn--secondary eg-btn--sm" onClick={() => health.onSave()}>
+        <button type="button" className="eg-btn eg-btn--secondary eg-btn--sm" disabled={health.saving} onClick={() => void health.onSave()}>
           Guardar y comprobar
         </button>
       </span>
@@ -923,109 +901,11 @@ function AccountEditor({
       </ol>
 
       {session && (
-        <>
-          <ol className="q-steps" aria-label="Cómo conectar esta cuenta">
-            <li data-done={a.label.trim() !== '' || undefined}>
-              <b>Ponle nombre</b>
-              <span>Arriba, para distinguirla de la principal en la tira (por ejemplo, «Trabajo»).</span>
-            </li>
-            <li>
-              <b>Inicia sesión con la otra cuenta</b>
-              <span>
-                Se abre una terminal con <code>{loginCommand}</code>
-                {a.provider === 'claude' && <> (si no te lo pide, escribe <code>/login</code>)</>}. En el navegador entra con la cuenta que
-                quieres añadir, no con la principal: si el navegador ya tiene abierta la principal, usa una ventana privada.
-              </span>
-              <span className="q-steps__actions">
-                <button
-                  className={`eg-btn ${sessionFileFound ? 'eg-btn--secondary' : 'eg-btn--primary'}`}
-                  disabled={busy || saving}
-                  onClick={connect}
-                >
-                  {sessionFileFound ? 'Volver a iniciar sesión' : persisted ? 'Iniciar sesión' : 'Guardar e iniciar sesión'}
-                </button>
-              </span>
-            </li>
-            <li data-done={sessionFileFound || undefined}>
-              {/* Presencia del fichero, no validez: no se afirma que la sesión esté «conectada». */}
-              <b>{sessionFileFound ? 'Fichero de sesión encontrado' : 'Esperando fichero de sesión'}</b>
-              <span>
-                {sessionFileFound
-                  ? 'El fichero existe, pero no confirma que la sesión sea válida; comprueba el estado en el widget.'
-                  : 'Quorb comprueba si aparece el fichero del CLI. Cuando lo encuentre, revisa el estado en el widget.'}
-              </span>
-            </li>
-          </ol>
-          <details className="q-details">
-            <summary>Avanzado · carpeta de sesión</summary>
-            <p className="q-note">
-              Cada cuenta guarda su sesión en su propia carpeta, así no toca la principal: el login se abre con <code>{session.env}</code>{' '}
-              apuntando a ella. Si el widget pide renovar la sesión, «Renovar sesión» vuelve a abrir el login del CLI.
-            </p>
-            <Field label="Carpeta de sesión" hint={<>Vacío = <code>{defaultSessionDir(a)}</code>. Puedes usar una que ya tengas. Quorb lee <code>{session.file}</code> dentro de ella.</>}>
-              <input type="text" spellCheck={false} value={a.configDir ?? ''} placeholder={defaultSessionDir(a)} onChange={(e) => onChange({ configDir: strOrNull(e.target.value) })} />
-            </Field>
-          </details>
-        </>
-      )}
-
-      {a.provider === 'cursor' && (
-        <SecretInput
-          id={key('cursor_token')}
-          label="Token de la cuenta"
-          configured={!!secrets[key('cursor_token')]}
-          onSaved={onSecrets}
-          hint="La app de Cursor guarda una sola sesión. Entra en cursor.com con esta cuenta y pega el valor de la cookie WorkosCursorSessionToken."
-        />
-      )}
-
-      {a.provider === 'copilot' && (
-        <>
-          <div className="q-cols">
-            <Field label="Usuario de GitHub">
-              <input type="text" spellCheck={false} value={a.username} onChange={(e) => onChange({ username: e.target.value })} />
-            </Field>
-            <Field label="Plan">
-              <select value={a.plan || 'pro'} onChange={(e) => onChange({ plan: e.target.value })}>
-                <option value="free">Free · 50</option>
-                <option value="pro">Pro · 300</option>
-                <option value="pro_plus">Pro+ · 1500</option>
-                <option value="business">Business · 300</option>
-                <option value="enterprise">Enterprise · 1000</option>
-                <option value="custom">Otra cantidad</option>
-              </select>
-            </Field>
-          </div>
-          {a.plan === 'custom' && (
-            <Field label="Peticiones premium incluidas al mes">
-              <input type="number" min={1} value={a.customAllowance ?? ''} onChange={(e) => onChange({ customAllowance: numOrNull(e.target.value) })} />
-            </Field>
-          )}
-          <SecretInput
-            id={key('github_token')}
-            label="Token de GitHub de esta cuenta (fine-grained)"
-            configured={!!secrets[key('github_token')]}
-            onSaved={onSecrets}
-            hint={<>Créalo con esta cuenta en <Link href={LINKS.githubToken}>GitHub › Fine-grained tokens</Link> con el permiso «Plan» (solo lectura).</>}
-          />
-        </>
-      )}
-
-      {a.provider === 'nan' && (
-        <>
-          <NanConnect account={a.id} connected={!!secrets[key('nan_session')]} onChange={onSecrets} />
-          <SecretInput id={key('nan_api_key')} label="API key (alternativa)" configured={!!secrets[key('nan_api_key')]} onSaved={onSecrets} />
-          <Field label="Plan" hint="La URL base y el resto de ajustes avanzados son los de la cuenta principal.">
-            <select value={a.plan || 'member'} onChange={(e) => onChange({ plan: e.target.value })}>
-              <option value="community">nan_community</option>
-              <option value="member">nan_member</option>
-              <option value="premium">GLM Premium</option>
-            </select>
         <details className="q-details">
           <summary>Avanzado · carpeta de sesión</summary>
           <p className="q-note">
             Cada cuenta guarda su sesión en su propia carpeta, así no toca la principal: el login se abre con <code>{session.env}</code>{' '}
-            apuntando a ella. Quorb no renueva el token; si caduca, «Renovar sesión» vuelve a abrir el CLI.
+            apuntando a ella. Si la comprobación pide renovar la sesión, «Volver a abrir el login» abre de nuevo el CLI.
           </p>
           <Field label="Carpeta de sesión" hint={<>Vacío = <code>{defaultSessionDir(a)}</code>. Puedes usar una que ya tengas. Quorb lee <code>{session.file}</code> dentro de ella.</>}>
             <input type="text" spellCheck={false} value={a.configDir ?? ''} placeholder={defaultSessionDir(a)} onChange={(e) => onChange({ configDir: strOrNull(e.target.value) })} />
@@ -1424,11 +1304,10 @@ export function Settings() {
   const secretsSig = JSON.stringify(secrets);
   const sectionDirty = (id: string) => {
     const acc = cfg.accounts.find((a) => a.id === id);
-    if (acc) return JSON.stringify(acc) !== JSON.stringify(baseline?.accounts.find((a) => a.id === id));
-    const k = CONFIG_KEY[id];
-    return !!k && JSON.stringify(cfg[k]) !== JSON.stringify(baseline?.[k]);
+    const k = CONFIG_KEY[acc?.provider ?? id];
+    return isConnectionDirty(acc, baseline?.accounts.find((a) => a.id === id), k ? cfg[k] : undefined, k ? baseline?.[k] : undefined);
   };
-  const healthFor = (id: string, hidden: boolean): HealthProps => ({ saved: baseline, secretsSig, dirty: sectionDirty(id), hidden, onSave: save });
+  const healthFor = (id: string, hidden: boolean): HealthProps => ({ saved: baseline, secretsSig, dirty: sectionDirty(id), hidden, saving, onSave: save });
   const selAccount = tabAccounts.find((a) => a.id === accountSel) ?? null;
   const addAccount = () => {
     const a = newAccount(cfg, tab as AccountProvider);
@@ -1666,9 +1545,6 @@ export function Settings() {
           onChange={(patch) => patchAccount(selAccount.id, patch)}
           onRemove={() => removeAccount(selAccount)}
           onSecrets={loadSecrets}
-          onError={setSaved}
-          onSave={save}
-          saving={saving}
           health={healthFor(selAccount.id, !selAccount.enabled)}
           cliMissing={cli[selAccount.provider] === false}
           loginCommand={
