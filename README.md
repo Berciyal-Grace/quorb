@@ -117,6 +117,23 @@ Some integrations use undocumented endpoints, which may change or stop working. 
 - Use remappable global shortcuts: `Ctrl+Alt+U`, `Ctrl+Alt+I`, `Ctrl+Alt+R`.
 - Update from signed GitHub releases when published; the app checks on startup and every six hours.
 
+### Connect and check accounts
+
+Settings guides you through connecting your primary and additional accounts:
+
+- For Claude, Codex and Gemini, use the official CLI login. If a CLI is missing,
+  copy the installation command and run it yourself; Quorb does not install it.
+- Check one account from Settings, even when it is hidden from the widget.
+  The check uses saved settings, not unsaved form values.
+- Save pending account settings, including inherited provider settings, before
+  opening CLI login. A failed configuration save does not start login.
+- A session file being found does not prove that authentication is still valid;
+  use the connection check to see the account's current status.
+
+See the [connection guide](./docs/account-onboarding.en.md)
+([Español](./docs/account-onboarding.md)) for the steps, status messages and
+partial-save errors.
+
 ### Visual overview
 
 Promotional illustrations, not raw screenshots.

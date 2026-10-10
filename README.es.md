@@ -117,6 +117,24 @@ Algunas integraciones usan endpoints no documentados, que pueden cambiar o dejar
 - Usad atajos globales reasignables: `Ctrl+Alt+U`, `Ctrl+Alt+I`, `Ctrl+Alt+R`.
 - Actualizad desde releases firmadas de GitHub cuando se publiquen; la app consulta al arrancar y cada seis horas.
 
+### Conectar y comprobar cuentas
+
+Ajustes os guía para conectar cuentas principales y adicionales:
+
+- Para Claude, Codex y Gemini, usad el login oficial del CLI. Si falta, copiad la
+  orden de instalación y ejecutadla vosotros; Quorb no lo instala.
+- Comprobad una cuenta desde Ajustes, aunque esté oculta en el widget.
+  La consulta usa lo guardado, no los valores pendientes del formulario.
+- Guardad los cambios de la cuenta, incluidos los ajustes heredados del
+  proveedor, antes de abrir el login del CLI. Un fallo al guardar la configuración
+  no inicia el login.
+- Encontrar el fichero de sesión no demuestra que la autenticación siga siendo
+  válida; consultad la comprobación de conexión para ver el estado de la cuenta.
+
+Consultad la [guía de conexión](./docs/account-onboarding.md)
+([English](./docs/account-onboarding.en.md)) para los pasos, mensajes de estado y
+errores de guardado parcial.
+
 ### Vista visual
 
 Ilustraciones promocionales, no capturas directas.
