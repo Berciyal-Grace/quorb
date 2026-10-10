@@ -121,8 +121,9 @@ Some integrations use undocumented endpoints, which may change or stop working. 
 
 Settings guides you through connecting your primary and additional accounts:
 
-- For Claude, Codex and Gemini, use the official CLI login. If a CLI is missing,
-  copy the installation command and run it yourself; Quorb does not install it.
+- For Claude, Codex and Gemini, use the official CLI login. On Windows, Quorb
+  can install Codex with your confirmation using existing Node/npm; signing in
+  remains a separate step. For Claude and Gemini, copy and run the install command.
 - Check one account from Settings, even when it is hidden from the widget.
   The check uses saved settings, not unsaved form values.
 - Save pending account settings, including inherited provider settings, before
