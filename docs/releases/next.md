@@ -1,0 +1,84 @@
+# Próxima release — Conectar y comprobar cuentas / Next release — Connect and check accounts
+
+> **Borrador / Draft.** Versión pendiente de confirmar; no se han cambiado
+> manifiestos ni publicado una release. Base de estas notas: `v0.3.1` → PR #51.
+> Al preparar la versión elegida, revisar el rango y trasladar estas notas al
+> archivo `v<version>.md` que utiliza el workflow.
+
+## Español
+
+Más información para conectar vuestras cuentas y comprobar su acceso desde
+Ajustes, sin tener que mostrarlas en el widget.
+
+### Nuevo
+
+- Comprobación individual de conexión para cuentas principales y adicionales,
+  también si están ocultas. El resultado utiliza la configuración guardada.
+- Avisos de CLI y órdenes de instalación copiables para Claude, Codex y Gemini.
+  Quorb no instala herramientas automáticamente.
+
+### Mejorado
+
+- Los pasos de conexión distinguen un fichero encontrado de una sesión válida;
+  el resultado de la consulta de uso explica si falta login o hay otro problema.
+- Guías ES/EN desde los README para conectar, comprobar y entender los fallos de
+  guardado de configuración frente a los de arranque con Windows.
+
+### Corregido
+
+- Antes de abrir el login se guardan los cambios pendientes de una cuenta ya
+  persistida, incluidos los ajustes heredados del proveedor. Así el CLI utiliza
+  la configuración guardada en lugar de abrirse con los valores anteriores.
+
+### Importante e instalación
+
+- La validación Windows, el login real y el aislamiento con credenciales siguen
+  pendientes. Las carpetas CLI son independientes por defecto: comprobad una
+  ruta personalizada para no compartirla con la cuenta principal.
+- No se acredita una corrección de la desaparición ocasional del widget ni de
+  accesibilidad. El manejo y refresco OAuth depende del proveedor.
+- Cuando se publique la versión elegida, descargad el EXE o MSI Windows x64 de
+  su release. No se prometen actualizaciones automáticas desde el repositorio
+  privado. La firma del updater no es Authenticode ni evita SmartScreen; no
+  desactivéis las protecciones de Windows.
+
+---
+
+## English
+
+More guidance to connect your accounts and check their access in Settings,
+without having to show them in the widget.
+
+### New
+
+- Individual connection checks for primary and additional accounts, including
+  hidden accounts. Results use saved configuration.
+- CLI notices and copyable installation commands for Claude, Codex and Gemini.
+  Quorb does not install tools automatically.
+
+### Improved
+
+- Connection steps distinguish a file being found from valid authentication;
+  the usage request explains whether login is needed or another problem occurred.
+- EN/ES guides linked from the READMEs explain connection checks and configuration
+  save errors versus Windows startup failures.
+
+### Fixed
+
+- Pending changes to an already-persisted account, including inherited provider
+  settings, are saved before CLI login opens. The CLI therefore uses saved
+  configuration rather than opening with the previous values.
+
+### Important and installation
+
+- Windows validation, real login and credential isolation remain pending. CLI
+  folders are separate by default: check that a custom path does not point to
+  your primary account's folder.
+- No fix for the occasional disappearing widget or accessibility improvements
+  is established. OAuth handling and refresh depend on the provider.
+- Once the selected version is published, download its Windows x64 EXE or MSI
+  from the release. Automatic updates from the private repository are not
+  promised. Updater signing is not Authenticode and does not prevent SmartScreen
+  warnings; do not disable Windows protections.
+
+[Detalle técnico / Technical detail: PR #51](https://github.com/egdev6/quorb/pull/51).
