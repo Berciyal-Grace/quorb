@@ -980,24 +980,32 @@ export function Settings() {
     const st = providerState(t.id, cfg, secrets);
     const badge = PROVIDER_BADGE[st];
     return (
-      <article key={t.id} className="eg-module-card q-provider" aria-current={drawerOpen && tab === t.id}>
-        <div className="eg-module-card__head">
+      <button
+        type="button"
+        key={t.id}
+        className="eg-module-card q-provider"
+        aria-current={drawerOpen && tab === t.id}
+        aria-haspopup="dialog"
+        aria-expanded={drawerOpen && tab === t.id}
+        onClick={() => selectTab(t.id)}
+      >
+        <span className="eg-module-card__head">
           <span className="q-provider__logo logo">
             <ProviderLogo id={t.id} name={t.name} />
           </span>
-          <h3 className="eg-module-card__name">{t.name}</h3>
-          <span className={`eg-status eg-status--${badge.tone}`}>{badge.label}</span>
-        </div>
+          <span className="eg-module-card__name">{t.name}</span>
+        </span>
         <span className="q-provider__desc">
           {t.desc}
           {accountsOf(cfg, t.id).length > 0 && ` · ${accountsOf(cfg, t.id).length + 1} cuentas`}
         </span>
-        <div className="eg-module-card__actions">
-          <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" aria-haspopup="dialog" aria-expanded={drawerOpen && tab === t.id} onClick={() => selectTab(t.id)}>
+        <span className="eg-module-card__actions">
+          <span className={`eg-status eg-status--${badge.tone}`}>{badge.label}</span>
+          <span className="eg-btn eg-btn--ghost eg-btn--sm q-provider__cta" aria-hidden="true">
             {st === 'warn' ? 'Conectar' : 'Configurar'}
-          </button>
-        </div>
-      </article>
+          </span>
+        </span>
+      </button>
     );
   };
 

@@ -84,7 +84,21 @@ export function mergeReports(prev: UsageReport[], next: UsageReport[]): UsageRep
     if (failed && r.meters.length === 0 && !r.spend && old && (old.meters.length > 0 || old.spend)) {
       return { ...old, status: 'warning', message: r.message, stale: true };
     }
+    // Sesión caducada: se conservan los últimos datos (atenuados) con la acción
+    // de renovar, en vez de dejar el círculo vacío hasta volver a entrar.
+    if (r.status === 'needsLogin' && r.meters.length === 0 && old && old.meters.length > 0) {
+      return { ...old, status: 'needsLogin', message: r.message, action: r.action, stale: true };
+    }
     return r;
+  });
+}
+
+/** Informes que acaban de perder la sesión (antes tenían datos o estaban bien). */
+export function sessionsLost(prev: UsageReport[], next: UsageReport[]): UsageReport[] {
+  const before = new Map(prev.map((r) => [r.id, r.status]));
+  return next.filter((r) => {
+    const was = before.get(r.id);
+    return r.status === 'needsLogin' && was != null && was !== 'needsLogin' && was !== 'unconfigured';
   });
 }
 

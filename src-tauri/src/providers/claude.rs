@@ -34,7 +34,7 @@ pub async fn fetch(cfg: &SubscriptionConfig, who: Who<'_>, http: &reqwest::Clien
     if creds.is_expired(chrono::Utc::now().timestamp_millis()) {
         return report.fail(
             Status::NeedsLogin,
-            "La sesión ha caducado. Abre Claude Code para renovarla.",
+            "La sesión ha caducado. «Renovar sesión» abre Claude Code, que la renueva; Quorb se actualiza solo.",
         );
     }
 
@@ -51,7 +51,7 @@ pub async fn fetch(cfg: &SubscriptionConfig, who: Who<'_>, http: &reqwest::Clien
     };
     match res.status().as_u16() {
         200 => {}
-        401 | 403 => return report.fail(Status::NeedsLogin, "Token rechazado. Abre Claude Code para renovarlo."),
+        401 | 403 => return report.fail(Status::NeedsLogin, "Token rechazado. «Renovar sesión» abre Claude Code para renovarlo; Quorb se actualiza solo."),
         429 => return report.fail(Status::Warning, "El endpoint de uso está limitando peticiones; reintento en el próximo ciclo."),
         code => return report.fail(Status::Error, format!("HTTP {code} en el endpoint de uso")),
     }

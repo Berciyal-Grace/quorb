@@ -188,6 +188,35 @@ pub(crate) fn read_json(path: &Path) -> Result<serde_json::Value, String> {
     serde_json::from_str(&raw).map_err(|e| format!("JSON inválido en {}: {e}", path.display()))
 }
 
+/// Huella de los ficheros de sesión de los CLIs (Claude Code, Codex, Gemini) de
+/// todas las cuentas: suma de sus fechas de modificación en ms. Cambia en cuanto
+/// un CLI renueva su token o se inicia sesión, y así el widget recarga al momento
+/// sin que la app toque los tokens.
+pub fn session_stamp(cfg: &AppConfig) -> u64 {
+    let h = home();
+    let main = |c: &SubscriptionConfig, default: PathBuf| match c.credentials_path.as_deref().map(str::trim) {
+        Some(p) if !p.is_empty() => PathBuf::from(p),
+        _ => default,
+    };
+    let mut files: Vec<PathBuf> = vec![];
+    if cfg.claude.enabled {
+        files.push(main(&cfg.claude, h.join(".claude").join(".credentials.json")));
+    }
+    if cfg.codex.enabled {
+        let dir = std::env::var("CODEX_HOME").map(PathBuf::from).unwrap_or_else(|_| h.join(".codex"));
+        files.push(main(&cfg.codex, dir.join("auth.json")));
+    }
+    if cfg.gemini.enabled {
+        files.push(main(&cfg.gemini, h.join(".gemini").join("oauth_creds.json")));
+    }
+    files.extend(cfg.accounts.iter().filter(|a| a.enabled).filter_map(|a| a.credentials_file(&h)));
+    files
+        .iter()
+        .filter_map(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
+        .filter_map(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .fold(0u64, |acc, d| acc.wrapping_add(d.as_millis() as u64))
+}
+
 pub fn home() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
 }

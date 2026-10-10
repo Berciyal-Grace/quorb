@@ -19,6 +19,8 @@ export const api = {
   setSecret: (key: ScopedSecretKey, value: string) => invoke<void>('set_secret', { key, value }),
   fetchUsage: () => invoke<UsageReport[]>('fetch_usage'),
   openLogin: (provider: string) => invoke<void>('open_login', { provider }),
+  /** Cambia cuando un CLI renueva su sesión (fechas de sus ficheros de credenciales) */
+  sessionStamp: () => invoke<number>('session_stamp'),
   openSettings: () => invoke<void>('open_settings'),
   showDetail: () => invoke<boolean>('show_detail'),
   setTrayTooltip: (text: string) => invoke<void>('set_tray_tooltip', { text }),

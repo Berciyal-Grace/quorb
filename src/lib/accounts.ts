@@ -21,6 +21,22 @@ export const defaultSessionDir = (a: Pick<Account, 'id' | 'provider'>) =>
 
 export const accountsOf = (cfg: AppConfig, provider: string): Account[] => cfg.accounts.filter((a) => a.provider === provider);
 
+/**
+ * Número de cada cuenta («1» la principal, «2»… las adicionales en el orden de Ajustes)
+ * para distinguir los círculos de un mismo proveedor. Solo proveedores con varias cuentas.
+ */
+export function accountTags(cfg: Pick<AppConfig, 'accounts'>): Record<string, string> {
+  const out: Record<string, string> = {};
+  const seen = new Map<string, number>();
+  for (const a of cfg.accounts) {
+    const n = (seen.get(a.provider) ?? 1) + 1;
+    seen.set(a.provider, n);
+    out[a.provider] = '1';
+    out[a.id] = String(n);
+  }
+  return out;
+}
+
 /** Sufijo nuevo, corto y sin chocar con los ids que ya hay. */
 function newSuffix(taken: Set<string>, rand: () => number): string {
   for (;;) {

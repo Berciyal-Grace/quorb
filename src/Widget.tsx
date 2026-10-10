@@ -4,7 +4,7 @@ import { PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 import { api, type WidgetPatch } from './lib/api';
-import { mergeReports, peakMeter, trayTooltip } from './lib/format';
+import { mergeReports, peakMeter, sessionsLost, trayTooltip } from './lib/format';
 import { derivePalette } from './lib/palette';
 import { detectAlerts, effectFor, notificationText, type AlertMemory } from './lib/alerts';
 import { applyOrder, dropIndex, moveTo } from './lib/order';
@@ -14,6 +14,7 @@ import { checkForUpdate, emitUpdateAvailable, installUpdate, shouldNotifyUpdate,
 import { retryWithBackoff, STARTUP_RETRY, USAGE_RETRY } from './lib/startup';
 import { DETAIL_EVENTS, DETAIL_WINDOW, isCurrentDetailInteraction, type DetailInteraction, type DetailState } from './lib/detail-panel';
 import { ProviderGauge } from './components/ProviderGauge';
+import { accountTags } from './lib/accounts';
 
 const CLOSE_DELAY = 280;
 const OPEN_DELAY = 90;
@@ -82,6 +83,9 @@ const local = {
     }
   },
 };
+
+/** Cada cuánto se mira si algún CLI ha renovado su sesión (lectura de fechas, barata). */
+const SESSION_CHECK_MS = 15_000;
 
 async function notify(title: string, body: string) {
   try {
@@ -220,6 +224,11 @@ export function Widget() {
       setReports(merged);
       api.setTrayTooltip(trayTooltip(merged)).catch(() => {});
       runAlerts(prev, merged);
+      if (configRef.current?.alerts.native !== false) {
+        for (const r of sessionsLost(prev, merged)) {
+          notify(`${r.name}: sesión caducada`, 'Pulsa «Renovar sesión» en su panel. Quorb se actualiza solo en cuanto se renueve.');
+        }
+      }
       setUpdatedAt(new Date());
       setError(null);
     } catch (e) {
@@ -296,6 +305,23 @@ export function Widget() {
     return () => window.clearInterval(id);
   }, [refreshMinutes, refresh]);
 
+  // Si Claude Code, Codex o Gemini renuevan su token (o se inicia sesión), sus
+  // ficheros de credenciales cambian: se recarga al momento sin esperar al ciclo.
+  useEffect(() => {
+    let last: number | null = null;
+    const check = () =>
+      api
+        .sessionStamp()
+        .then((s) => {
+          if (last != null && s !== last) refresh();
+          last = s;
+        })
+        .catch(() => {});
+    check();
+    const id = window.setInterval(check, SESSION_CHECK_MS);
+    return () => window.clearInterval(id);
+  }, [refresh]);
+
   // ───── monitor (y cambios de resolución / barra de tareas) ─────
   // Se resuelve aunque la config aún no haya llegado (monitor actual/principal),
   // para que la tira no quede vacía ni en una posición arbitraria si el primer
@@ -320,6 +346,7 @@ export function Widget() {
   const order = reorder?.order ?? config?.providerOrder ?? [];
   const hiddenIds = config?.hiddenProviders ?? [];
   const visible = applyOrder(reports, order).filter((r) => !hiddenIds.includes(r.id));
+  const tags = config ? accountTags(config) : {};
   const active = reports.find((r) => r.id === hovered) ?? null;
 
   // ───── auto-ocultar ─────
@@ -741,6 +768,7 @@ export function Widget() {
               small={small}
               size={orbSize}
               active={hovered === r.id}
+              account={tags[r.id]}
               threshold={config?.alerts.threshold}
               dragging={reorder?.id === r.id}
               onHover={(el) => openFor(r.id, el)}

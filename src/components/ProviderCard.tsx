@@ -15,8 +15,12 @@ const STATUS: Record<UsageReport['status'], { label: string; tone: 'success' | '
 function ActionButton({ report }: { report: UsageReport }) {
   if (report.action === 'login') {
     return (
-      <button className="eg-btn eg-btn--primary eg-btn--sm" onClick={() => api.openLogin(report.id).catch(console.error)}>
-        Iniciar sesión
+      <button
+        className="eg-btn eg-btn--primary eg-btn--sm"
+        title={report.stale ? 'Abre el CLI oficial, que renueva la sesión; el widget se actualiza solo al terminar' : undefined}
+        onClick={() => api.openLogin(report.id).catch(console.error)}
+      >
+        {report.stale ? 'Renovar sesión' : 'Iniciar sesión'}
       </button>
     );
   }
