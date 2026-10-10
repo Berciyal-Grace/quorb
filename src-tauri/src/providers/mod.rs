@@ -203,8 +203,11 @@ pub fn session_stamp(cfg: &AppConfig) -> u64 {
         files.push(main(&cfg.claude, h.join(".claude").join(".credentials.json")));
     }
     if cfg.codex.enabled {
-        let dir = std::env::var("CODEX_HOME").map(PathBuf::from).unwrap_or_else(|_| h.join(".codex"));
-        files.push(main(&cfg.codex, dir.join("auth.json")));
+        // Mismo resolver que `codex::fetch`: así el sello observa el fichero
+        // que de verdad se lee (incluido el respaldo ~/.codex/auth.json).
+        if let Ok(p) = codex::resolved_auth_path(cfg.codex.credentials_path.as_deref()) {
+            files.push(p);
+        }
     }
     if cfg.gemini.enabled {
         files.push(main(&cfg.gemini, h.join(".gemini").join("oauth_creds.json")));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectAlerts, effectFor, notificationText } from './alerts';
+import { detectAlerts, effectFor, nativeAlertsEnabled, notificationText } from './alerts';
 import { meterPace, paceOf, spendPace } from './pace';
 import type { UsageReport } from './types';
 
@@ -58,6 +58,17 @@ describe('alerts', () => {
     expect(effectFor([], fx)).toBeNull();
     expect(notificationText(exceeded)?.title).toBe('Límite superado');
     expect(notificationText(reset)?.title).toBe('Límite reiniciado');
+  });
+});
+
+describe('nativeAlertsEnabled', () => {
+  it('exige el interruptor maestro y el aviso nativo', () => {
+    expect(nativeAlertsEnabled({ enabled: false, native: true })).toBe(false);
+    expect(nativeAlertsEnabled({ enabled: true, native: false })).toBe(false);
+    expect(nativeAlertsEnabled({ enabled: true, native: true })).toBe(true);
+    // Sin configuración no se notifica (antes `native !== false` sí lo hacía).
+    expect(nativeAlertsEnabled(undefined)).toBe(false);
+    expect(nativeAlertsEnabled(null)).toBe(false);
   });
 });
 

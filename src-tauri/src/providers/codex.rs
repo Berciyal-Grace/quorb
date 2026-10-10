@@ -9,20 +9,39 @@ use super::{home, net_error, read_json, resolve_path, unix_to_rfc3339, Who};
 use crate::config::SubscriptionConfig;
 use crate::model::{Kind, Meter, Status, UsageReport};
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const USAGE_URL: &str = "https://chatgpt.com/backend-api/wham/usage";
+
+/// Candidatos de `auth.json` en el orden en que se buscan.
+///
+/// Compartido por `fetch` y por `providers::session_stamp` para que ambos
+/// observen el mismo fichero: `$CODEX_HOME/auth.json` (si la variable existe)
+/// y `~/.codex/auth.json` como respaldo.
+pub(crate) fn auth_candidates(codex_home: Option<&Path>, home: &Path) -> Vec<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(dir) = codex_home {
+        candidates.push(dir.join("auth.json"));
+    }
+    candidates.push(home.join(".codex").join("auth.json"));
+    candidates
+}
+
+/// Ruta efectiva de `auth.json`: respeta `credentials_path` explícito y, si no,
+/// el primer candidato existente.
+pub(crate) fn auth_path(credentials_path: Option<&str>, codex_home: Option<&Path>, home: &Path) -> Result<PathBuf, String> {
+    resolve_path(credentials_path, &auth_candidates(codex_home, home))
+}
+
+/// `auth_path` leyendo `CODEX_HOME` del entorno (uso real; los tests inyectan).
+pub(crate) fn resolved_auth_path(credentials_path: Option<&str>) -> Result<PathBuf, String> {
+    auth_path(credentials_path, std::env::var_os("CODEX_HOME").map(PathBuf::from).as_deref(), &home())
+}
 
 pub async fn fetch(cfg: &SubscriptionConfig, who: Who<'_>, http: &reqwest::Client) -> UsageReport {
     let report = who.report("ChatGPT · Codex", Kind::Subscription);
 
-    let mut candidates: Vec<PathBuf> = vec![];
-    if let Ok(dir) = std::env::var("CODEX_HOME") {
-        candidates.push(PathBuf::from(dir).join("auth.json"));
-    }
-    candidates.push(home().join(".codex").join("auth.json"));
-
-    let path = match resolve_path(cfg.credentials_path.as_deref(), &candidates) {
+    let path = match resolved_auth_path(cfg.credentials_path.as_deref()) {
         Ok(p) => p,
         Err(e) => return report.fail(Status::NeedsLogin, format!("{e}. Ejecuta «codex login».")),
     };
@@ -149,6 +168,89 @@ pub(crate) fn parse_usage(v: &Value) -> (Option<String>, Vec<Meter>) {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    /// Directorio temporal propio (sin dependencias externas) que se limpia solo.
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(tag: &str) -> Self {
+            static N: AtomicU32 = AtomicU32::new(0);
+            let n = N.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!("quorb-codex-test-{tag}-{}-{n}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+
+        /// Crea un fichero con contenido mínimo y devuelve su ruta.
+        fn file(&self, rel: &str) -> PathBuf {
+            let p = self.0.join(rel);
+            if let Some(parent) = p.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            std::fs::write(&p, "{}").unwrap();
+            p
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn auth_candidates_include_home_fallback() {
+        let home = Path::new("/tmp/quorb-home");
+        let codex = Path::new("/tmp/quorb-codex");
+        assert_eq!(
+            auth_candidates(Some(codex), home),
+            vec![codex.join("auth.json"), home.join(".codex").join("auth.json")]
+        );
+        assert_eq!(auth_candidates(None, home), vec![home.join(".codex").join("auth.json")]);
+    }
+
+    #[test]
+    fn auth_path_prefers_codex_home_when_it_has_auth() {
+        let home = TempDir::new("home-codexhome");
+        let codex_home = TempDir::new("codexhome");
+        let codex_auth = codex_home.file("auth.json");
+        home.file(".codex/auth.json");
+        assert_eq!(auth_path(None, Some(codex_home.path()), home.path()).unwrap(), codex_auth);
+    }
+
+    #[test]
+    fn auth_path_falls_back_to_home_auth_when_codex_home_lacks_it() {
+        // CODEX_HOME existe pero sin auth.json: ambos (fetch y stamp) deben ver ~/.codex/auth.json.
+        let home = TempDir::new("home-fallback");
+        let codex_home = TempDir::new("codexhome-empty");
+        let home_auth = home.file(".codex/auth.json");
+        assert_eq!(auth_path(None, Some(codex_home.path()), home.path()).unwrap(), home_auth);
+    }
+
+    #[test]
+    fn auth_path_keeps_explicit_credentials_path_priority() {
+        let home = TempDir::new("home-custom");
+        let codex_home = TempDir::new("codexhome-custom");
+        codex_home.file("auth.json");
+        let custom = home.file("custom/auth.json");
+        let explicit = custom.to_string_lossy().into_owned();
+        assert_eq!(auth_path(Some(&explicit), Some(codex_home.path()), home.path()).unwrap(), custom);
+    }
+
+    #[test]
+    fn auth_path_errors_when_nothing_exists() {
+        let home = TempDir::new("home-empty");
+        let codex_home = TempDir::new("codexhome-none");
+        assert!(auth_path(None, Some(codex_home.path()), home.path()).is_err());
+        let missing = home.path().join("missing.json");
+        assert!(auth_path(Some(missing.to_string_lossy().as_ref()), None, home.path()).is_err());
+    }
 
     #[test]
     fn parses_auth() {
