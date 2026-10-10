@@ -121,8 +121,10 @@ Algunas integraciones usan endpoints no documentados, que pueden cambiar o dejar
 
 Ajustes os guía para conectar cuentas principales y adicionales:
 
-- Para Claude, Codex y Gemini, usad el login oficial del CLI. Si falta, copiad la
-  orden de instalación y ejecutadla vosotros; Quorb no lo instala.
+- Para Claude, Codex y Gemini, usad el login oficial del CLI. En Windows, Quorb
+  puede instalar Codex con vuestra confirmación usando Node/npm ya instalados;
+  iniciar sesión sigue siendo otro paso. Para Claude y Gemini, copiad y ejecutad
+  la orden de instalación.
 - Comprobad una cuenta desde Ajustes, aunque esté oculta en el widget.
   La consulta usa lo guardado, no los valores pendientes del formulario.
 - Guardad los cambios de la cuenta, incluidos los ajustes heredados del
