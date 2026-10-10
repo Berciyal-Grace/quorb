@@ -348,49 +348,235 @@ mod platform {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-    use std::time::Instant;
+    use std::path::{Path, PathBuf};
+    use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-    fn sh(script: &str) -> (PathBuf, Vec<String>) {
-        (
-            PathBuf::from("/bin/sh"),
-            vec!["-c".to_string(), script.to_string()],
-        )
+    /// Variable de entorno que activa un modo del proceso hijo fixture. Sin ella
+    /// el binario de test se comporta como siempre (la suite normal no la define).
+    const FIXTURE_MODE_ENV: &str = "QUORB_CLI_PROCESS_FIXTURE_MODE";
+    /// Clave canaria (no debe heredarse) y clave explícita (sí debe llegar).
+    const CANARY_ENV: &str = "QUORB_CLI_PROCESS_CANARY";
+    const GIVEN_ENV: &str = "QUORB_CLI_PROCESS_GIVEN";
+    /// Fichero-marca donde el nieto escribe latidos para probar que muere.
+    const MARKER_ENV: &str = "QUORB_CLI_PROCESS_GRANDCHILD_MARKER";
+    /// Framing explícito: separa el payload real del preámbulo/resumen de libtest.
+    const FRAME_BEGIN: &str = "<quorb-fixture>";
+    const FRAME_END: &str = "</quorb-fixture>";
+    /// Gracia mínima (sólo fixture de test) para que Windows asigne el Job Object
+    /// antes de que un hijo de vida muy corta termine; no toca producción.
+    const FIXTURE_STARTUP_GRACE: Duration = Duration::from_millis(150);
+    /// Número de latidos del nieto (300 * 100 ms = 30 s) que el runner debe cortar.
+    const GRANDCHILD_HEARTBEATS: u32 = 300;
+
+    /// Binario nativo actual: el propio binario de test, portable en cualquier SO.
+    fn fixture_program() -> PathBuf {
+        std::env::current_exe().expect("ruta del binario de test actual")
     }
 
+    /// Directorio de trabajo portable (directorio temporal del SO, no `/tmp`).
+    fn fixture_cwd() -> PathBuf {
+        std::env::temp_dir()
+    }
+
+    /// Nombre con el que libtest registra el test fixture. `module_path!()` incluye
+    /// el crate; libtest lista el nombre sin ese primer segmento.
+    fn fixture_test_name() -> String {
+        let full = concat!(module_path!(), "::", "fixture_entry");
+        full.split_once("::")
+            .map(|(_, rest)| rest.to_string())
+            .unwrap_or_else(|| full.to_string())
+    }
+
+    /// Argumentos para invocar el binario de test como hijo fixture concreto.
+    fn fixture_child_args() -> Vec<String> {
+        vec![
+            fixture_test_name(),
+            "--exact".to_string(),
+            "--nocapture".to_string(),
+        ]
+    }
+
+    /// Entorno mínimo explícito. En Windows el cargador necesita `SystemRoot`
+    /// (y PATH/TEMP); en Unix no se depende de `/bin/sh` ni de shell alguno.
     fn base_env() -> BTreeMap<String, String> {
         let mut env = BTreeMap::new();
-        env.insert("PATH".into(), "/usr/bin:/bin".into());
+        #[cfg(windows)]
+        {
+            for key in ["SystemRoot", "PATH", "TEMP", "TMP"] {
+                if let Ok(value) = std::env::var(key) {
+                    env.insert(key.to_string(), value);
+                }
+            }
+        }
+        #[cfg(unix)]
+        {
+            env.insert("PATH".into(), "/usr/bin:/bin".into());
+        }
         env
     }
 
-    fn run_script(script: &str, timeout: Duration) -> (Result<CommandOutput, RunError>, Duration) {
-        let (program, args) = sh(script);
+    fn fixture_env(mode: &str) -> BTreeMap<String, String> {
+        let mut env = base_env();
+        env.insert(FIXTURE_MODE_ENV.to_string(), mode.to_string());
+        env
+    }
+
+    fn run_fixture(mode: &str, timeout: Duration) -> (Result<CommandOutput, RunError>, Duration) {
+        run_fixture_with_env(&fixture_env(mode), timeout)
+    }
+
+    fn run_fixture_with_env(
+        env: &BTreeMap<String, String>,
+        timeout: Duration,
+    ) -> (Result<CommandOutput, RunError>, Duration) {
         let started = Instant::now();
-        let result = ProcessRunner.run(&program, &args, &base_env(), Path::new("/tmp"), timeout);
+        let result = ProcessRunner.run(
+            &fixture_program(),
+            &fixture_child_args(),
+            env,
+            &fixture_cwd(),
+            timeout,
+        );
         (result, started.elapsed())
+    }
+
+    fn emit(bytes: &[u8], to_stderr: bool) {
+        use std::io::Write;
+        if to_stderr {
+            let mut stream = std::io::stderr().lock();
+            let _ = stream.write_all(bytes);
+            let _ = stream.flush();
+        } else {
+            let mut stream = std::io::stdout().lock();
+            let _ = stream.write_all(bytes);
+            let _ = stream.flush();
+        }
+    }
+
+    fn framed(payload: &str) -> Vec<u8> {
+        format!("{FRAME_BEGIN}{payload}{FRAME_END}").into_bytes()
+    }
+
+    fn assert_framed(stream: &str, payload: &str) {
+        let expected = format!("{FRAME_BEGIN}{payload}{FRAME_END}");
+        assert!(
+            stream.contains(&expected),
+            "payload con framing ausente: esperaba {expected:?} en {stream:?}"
+        );
+    }
+
+    /// Contrato de portabilidad: el fixture es el binario de test nativo actual y
+    /// su cwd es el directorio temporal del SO, nunca `/bin/sh` ni `/tmp`.
+    #[test]
+    fn fixture_child_program_is_native_current_exe() {
+        let program = fixture_program();
+        assert_eq!(program, std::env::current_exe().expect("exe actual"));
+        assert!(!program.to_string_lossy().contains("/bin/sh"));
+        assert_eq!(fixture_cwd(), std::env::temp_dir());
+        let (result, _) = run_fixture("success", Duration::from_secs(5));
+        assert!(result.is_ok(), "fixture nativo ejecutable: {result:?}");
+    }
+
+    /// Hijo controlado. Con `FIXTURE_MODE_ENV` ausente es NOOP (suite normal): no se
+    /// hereda entorno ni argumentos más allá del mapa explícito del runner.
+    #[test]
+    fn fixture_entry() {
+        let mode = match std::env::var(FIXTURE_MODE_ENV) {
+            Ok(mode) => mode,
+            Err(_) => return,
+        };
+
+        std::thread::sleep(FIXTURE_STARTUP_GRACE);
+
+        match mode.as_str() {
+            "success" => emit(&framed("hello"), false),
+            "exit3" => {
+                emit(&framed("boom"), true);
+                std::process::exit(3);
+            }
+            "sleep" => std::thread::sleep(Duration::from_secs(30)),
+            "flood" => {
+                // > MAX_CAPTURE_BYTES en ambos streams: el runner debe acotar cada uno.
+                let chunk = vec![b'a'; 64 * 1024];
+                for _ in 0..4 {
+                    emit(&chunk, false);
+                    emit(&chunk, true);
+                }
+            }
+            "grandchild" => fixture_spawn_grandchild(),
+            "grandchild_writer" => fixture_grandchild_heartbeat(),
+            "env_canary" => {
+                let canary = std::env::var(CANARY_ENV).unwrap_or_else(|_| "<absent>".to_string());
+                let given = std::env::var(GIVEN_ENV).unwrap_or_else(|_| "<absent>".to_string());
+                emit(&framed(&format!("canary={canary};given={given}")), false);
+            }
+            other => panic!("modo fixture desconocido: {other}"),
+        }
+    }
+
+    /// Lanza un nieto real (mismo binario, StdIO heredado) que retiene las tuberías,
+    /// y no sale hasta comprobar que el nieto existe. No lo mata ni lo espera: el
+    /// runner debe matar el árbol completo.
+    fn fixture_spawn_grandchild() {
+        let marker = std::env::var(MARKER_ENV).expect("marca del nieto");
+        let mut cmd = std::process::Command::new(fixture_program());
+        cmd.args(fixture_child_args())
+            .env_clear()
+            .envs(std::env::vars())
+            .env(FIXTURE_MODE_ENV, "grandchild_writer")
+            .env(MARKER_ENV, &marker);
+        let child = cmd.spawn().expect("nieto lanzado");
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !Path::new(&marker).exists() {
+            assert!(
+                Instant::now() < deadline,
+                "el nieto no llegó a arrancar de verdad"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        emit(&framed("done"), false);
+        drop(child);
+    }
+
+    /// El nieto late cada 100 ms. Si el runner lo mata, los latidos cesan.
+    fn fixture_grandchild_heartbeat() {
+        use std::io::Write;
+        let marker = std::env::var(MARKER_ENV).expect("marca del nieto");
+        for _ in 0..GRANDCHILD_HEARTBEATS {
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&marker)
+            {
+                let _ = file.write_all(b".");
+                let _ = file.flush();
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
     }
 
     #[test]
     fn real_runner_captures_success_output() {
-        let (result, elapsed) = run_script("printf hello", Duration::from_secs(5));
+        let (result, elapsed) = run_fixture("success", Duration::from_secs(5));
         let out = result.expect("salida correcta");
         assert_eq!(out.code, 0);
-        assert_eq!(out.stdout, "hello");
+        assert_framed(&out.stdout, "hello");
         assert!(elapsed < Duration::from_secs(3), "sin demora: {elapsed:?}");
     }
 
     #[test]
     fn real_runner_reports_nonzero_exit_and_stderr() {
-        let (result, _) = run_script("printf boom >&2; exit 3", Duration::from_secs(5));
+        let (result, _) = run_fixture("exit3", Duration::from_secs(5));
         let out = result.expect("proceso terminado");
         assert_eq!(out.code, 3);
-        assert_eq!(out.stderr, "boom");
+        assert_framed(&out.stderr, "boom");
     }
 
     #[test]
     fn real_runner_times_out_and_returns_within_bound() {
-        let (result, elapsed) = run_script("sleep 5", Duration::from_millis(100));
+        let (result, elapsed) = run_fixture("sleep", Duration::from_millis(100));
         assert_eq!(result, Err(RunError::Timeout));
         assert!(
             elapsed < Duration::from_secs(2),
@@ -400,44 +586,72 @@ mod tests {
 
     #[test]
     fn real_runner_caps_output_instead_of_growing_unbounded() {
-        let script = r#"awk 'BEGIN{for(i=0;i<200000;i++) printf "a"}'"#;
-        let (result, _) = run_script(script, Duration::from_secs(10));
+        let (result, _) = run_fixture("flood", Duration::from_secs(10));
         let out = result.expect("proceso terminado");
-        assert_eq!(
-            out.stdout.len(),
-            MAX_CAPTURE_BYTES,
-            "salida acotada por stream"
-        );
+        assert_eq!(out.stdout.len(), MAX_CAPTURE_BYTES, "stdout acotado");
+        assert_eq!(out.stderr.len(), MAX_CAPTURE_BYTES, "stderr acotado");
     }
 
     #[test]
     fn real_runner_kills_the_tree_so_a_grandchild_cannot_hold_the_pipe() {
-        // El shell sale, pero un nieto retiene stdout 10 s: el runner debe volver
-        // en cuanto mata el grupo, no esperar al EOF del nieto.
-        let (result, elapsed) = run_script("sleep 10 & printf done", Duration::from_millis(100));
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("reloj")
+            .as_nanos();
+        let marker = std::env::temp_dir().join(format!(
+            "quorb-fixture-grandchild-{}-{unique}",
+            std::process::id()
+        ));
+
+        let mut env = fixture_env("grandchild");
+        env.insert(MARKER_ENV.to_string(), marker.to_string_lossy().into_owned());
+
+        let started = Instant::now();
+        let result = ProcessRunner.run(
+            &fixture_program(),
+            &fixture_child_args(),
+            &env,
+            &fixture_cwd(),
+            Duration::from_secs(10),
+        );
+        let elapsed = started.elapsed();
         let out = result.expect("proceso terminado");
+
         assert_eq!(out.code, 0);
-        assert!(out.stdout.contains("done"));
+        assert_framed(&out.stdout, "done");
+        assert!(marker.exists(), "el nieto debió crearse de verdad");
         assert!(
-            elapsed < Duration::from_secs(1),
+            elapsed < Duration::from_secs(3),
             "sin cuelgue por el nieto: {elapsed:?}"
         );
+
+        // Prueba de muerte real: si el nieto siguiera vivo escribiría más latidos
+        // tras volver el runner (no basta con que el lector se desasocie).
+        let before = std::fs::metadata(&marker).map(|m| m.len()).unwrap_or(0);
+        std::thread::sleep(Duration::from_millis(500));
+        let after = std::fs::metadata(&marker).map(|m| m.len()).unwrap_or(0);
+        assert_eq!(after, before, "el nieto sigue vivo y escribiendo latidos");
     }
 
     #[test]
     fn real_runner_passes_only_the_given_environment() {
-        std::env::set_var("QUORB_CLI_PROCESS_CANARY", "leak");
-        let (program, args) = sh(r#"printf %s "$QUORB_CLI_PROCESS_CANARY""#);
-        let out = ProcessRunner
-            .run(
-                &program,
-                &args,
-                &base_env(),
-                Path::new("/tmp"),
-                Duration::from_secs(5),
-            )
-            .expect("proceso terminado");
-        std::env::remove_var("QUORB_CLI_PROCESS_CANARY");
-        assert_eq!(out.stdout, "", "no debe heredar el entorno del proceso");
+        std::env::set_var(CANARY_ENV, "leak");
+        let mut env = fixture_env("env_canary");
+        env.insert(GIVEN_ENV.to_string(), "explicit-ok".to_string());
+        let result = ProcessRunner.run(
+            &fixture_program(),
+            &fixture_child_args(),
+            &env,
+            &fixture_cwd(),
+            Duration::from_secs(5),
+        );
+        std::env::remove_var(CANARY_ENV);
+        let out = result.expect("proceso terminado");
+        assert_framed(&out.stdout, "canary=<absent>;given=explicit-ok");
+        assert!(
+            !out.stdout.contains("leak"),
+            "no debe heredar el entorno del proceso: {:?}",
+            out.stdout
+        );
     }
 }
