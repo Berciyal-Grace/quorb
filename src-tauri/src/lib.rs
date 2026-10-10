@@ -22,6 +22,8 @@ const WIDGET: &str = "widget";
 const SETTINGS: &str = "settings";
 /// Escala de la ventana de Ajustes (1.0 = 100 %).
 const SETTINGS_ZOOM: f64 = 0.85;
+/// Alto inicial de Ajustes (px lógicos): Proveedores entero sin scroll a escala 85 %.
+const SETTINGS_HEIGHT: f64 = 920.0;
 const OVERLAY: &str = "overlay";
 const DETAIL: &str = "detail";
 const TRAY_ID: &str = "main";
@@ -270,6 +272,13 @@ fn overlay_done(app: AppHandle) {
     }
 }
 
+/// Huella de los ficheros de sesión de los CLIs (ver `providers::session_stamp`).
+#[tauri::command]
+fn session_stamp(state: State<'_, AppState>) -> u64 {
+    let cfg = state.config.lock().unwrap().clone();
+    providers::session_stamp(&cfg)
+}
+
 #[tauri::command]
 fn open_login(state: State<'_, AppState>, provider: String) -> Result<(), String> {
     let cfg = state.config.lock().unwrap().clone();
@@ -309,9 +318,17 @@ fn show_settings(app: &AppHandle) -> tauri::Result<()> {
         w.unminimize()?;
         return w.set_focus();
     }
+    // Alto suficiente para ver Proveedores sin scroll al abrir, sin pasar de la
+    // pantalla (menos la barra de tareas y el título de la ventana).
+    let height = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| m.size().height as f64 / m.scale_factor() - 96.0)
+        .map_or(SETTINGS_HEIGHT, |max| SETTINGS_HEIGHT.min(max).max(520.0));
     let win = WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App("index.html".into()))
         .title("Ajustes · Quorb")
-        .inner_size(1040.0, 760.0)
+        .inner_size(1040.0, height)
         .min_inner_size(480.0, 520.0)
         .center()
         .build()?;
@@ -517,6 +534,7 @@ pub fn run() {
             set_secret,
             fetch_usage,
             open_login,
+            session_stamp,
             open_settings,
             show_detail,
             set_tray_tooltip,

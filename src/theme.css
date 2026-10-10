@@ -51,6 +51,8 @@ html[data-window='settings'] { font-family: var(--font-sans); font-size: 15px; }
 
 .orb.eg-gauge { display: block; cursor: default; }
 .orb.eg-gauge::after { content: none; }
+/* Varias cuentas del mismo proveedor: número en la esquina para distinguir los círculos */
+.orb__acct { position: absolute; right: -2px; bottom: -2px; z-index: 2; min-width: max(13px, calc(var(--size) * 0.36)); height: max(13px, calc(var(--size) * 0.36)); padding: 0 3px; display: grid; place-items: center; border-radius: 999px; background: var(--color-surface-3); border: 1.5px solid var(--color-bg-canvas); color: var(--color-fg-default); font: 700 max(8px, calc(var(--size) * 0.22))/1 var(--font-sans); font-variant-numeric: tabular-nums; pointer-events: none; }
 .orb.eg-gauge:hover:not(.is-warning):not(.is-over), .orb.eg-gauge.is-hover:not(.is-warning):not(.is-over) { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring-1) 45%, transparent); }
 /* .logo (styles.css) es un bloque a pantalla completa: dentro del Gauge vuelve a ser el hueco central del DS. */
 .eg-gauge__logo, .eg-gauge__logo.logo { position: absolute; inset: 28%; width: auto; height: auto; border-radius: 0; background: none; overflow: visible; }
@@ -252,7 +254,13 @@ html[data-window='settings'] body { background: var(--color-bg-canvas); color: v
 
 /* proveedores: rejilla de ModuleCards */
 .q-providers { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
-.q-provider { padding: 16px; gap: 12px; cursor: default; background: var(--gradient-sheen), var(--color-surface-2); }
+.q-provider { padding: 16px; gap: 12px; cursor: pointer; background: var(--gradient-sheen), var(--color-surface-2); }
+/* Toda la card es el botón: reset de <button> + hover/foco de card */
+button.q-provider { display: flex; flex-direction: column; width: 100%; font: inherit; color: inherit; text-align: left; -webkit-appearance: none; appearance: none; }
+.q-provider:focus-visible { outline: 2px solid var(--color-border-brand); outline-offset: 2px; }
+.q-provider .eg-module-card__actions { align-items: center; flex-wrap: nowrap; }
+.q-provider__cta { pointer-events: none; }
+.q-provider:hover .q-provider__cta, .q-provider:focus-visible .q-provider__cta, .q-provider[aria-current='true'] .q-provider__cta { background: var(--gradient-sheen), var(--color-surface-3); box-shadow: var(--shadow-edge), 0 0 0 1px var(--color-border-hairline); color: var(--color-fg-default); }
 .q-provider[aria-current='true'] { border-color: var(--color-border-brand); box-shadow: var(--shadow-edge-strong), var(--shadow-elev-1), var(--shadow-glow-base); }
 .q-provider__logo { width: 24px; height: 24px; flex: none; display: grid; place-items: center; }
 .q-provider__logo .logo__svg { width: 90%; }

@@ -22,6 +22,7 @@ export function ProviderGauge({
   small,
   size,
   active,
+  account,
   threshold,
   dragging = false,
   onHover,
@@ -32,6 +33,8 @@ export function ProviderGauge({
   /** Diámetro en px */
   size: number;
   active: boolean;
+  /** Número de cuenta cuando el proveedor tiene varias («1», «2»…) */
+  account?: string;
   /** Umbral de aviso (%) */
   threshold?: number;
   onHover: (el: HTMLElement) => void;
@@ -58,7 +61,9 @@ export function ProviderGauge({
       data-id={report.id}
       data-dragging={dragging || undefined}
       data-status={report.status}
+      data-account={account}
       aria-label={report.name}
+      title={account ? report.name : undefined}
       aria-expanded={active}
       style={{ '--size': `${size}px`, '--w': `${w}px`, '--gap': `${gap}px` } as CSSProperties}
       onMouseEnter={(e) => onHover(e.currentTarget)}
@@ -73,6 +78,11 @@ export function ProviderGauge({
       <span className="eg-gauge__logo logo">
         <ProviderLogo id={report.id} name={report.name} />
       </span>
+      {account && (
+        <span className="orb__acct" aria-hidden="true">
+          {account}
+        </span>
+      )}
     </button>
   );
 }

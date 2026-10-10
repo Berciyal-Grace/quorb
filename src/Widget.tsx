@@ -4,16 +4,18 @@ import { PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 import { api, type WidgetPatch } from './lib/api';
-import { mergeReports, peakMeter, trayTooltip } from './lib/format';
+import { mergeReports, peakMeter, sessionsLost, trayTooltip } from './lib/format';
 import { derivePalette } from './lib/palette';
-import { detectAlerts, effectFor, notificationText, type AlertMemory } from './lib/alerts';
+import { detectAlerts, effectFor, nativeAlertsEnabled, notificationText, type AlertMemory } from './lib/alerts';
 import { applyOrder, dropIndex, moveTo } from './lib/order';
 import { contains, isEdge, isVertical, nearestEdge, panelHeightLimit, stripRect, type Edge, type Rect } from './lib/dock';
 import { ORB_SIZE, type AppConfig, type UsageReport } from './lib/types';
 import { checkForUpdate, emitUpdateAvailable, installUpdate, shouldNotifyUpdate, updateErrorText, UPDATE_EVERY_MS, UPDATE_FIRST_DELAY_MS, type UpdatePhase } from './lib/updater';
 import { retryWithBackoff, STARTUP_RETRY, USAGE_RETRY } from './lib/startup';
+import { createSessionMonitor } from './lib/session-monitor';
 import { DETAIL_EVENTS, DETAIL_WINDOW, isCurrentDetailInteraction, type DetailInteraction, type DetailState } from './lib/detail-panel';
 import { ProviderGauge } from './components/ProviderGauge';
+import { accountTags } from './lib/accounts';
 
 const CLOSE_DELAY = 280;
 const OPEN_DELAY = 90;
@@ -82,6 +84,9 @@ const local = {
     }
   },
 };
+
+/** Cada cuánto se mira si algún CLI ha renovado su sesión (lectura de fechas, barata). */
+const SESSION_CHECK_MS = 15_000;
 
 async function notify(title: string, body: string) {
   try {
@@ -188,7 +193,7 @@ export function Widget() {
     if (!res.events.length) return;
 
     setRevealUntil(Date.now() + REVEAL_MS);
-    if (a.native) {
+    if (nativeAlertsEnabled(a)) {
       const n = notificationText(res.events);
       if (n) notify(n.title, n.body);
     }
@@ -202,8 +207,8 @@ export function Widget() {
   }, []);
 
   // ───── datos ─────
-  const refresh = useCallback(async () => {
-    if (inFlight.current) return;
+  const refresh = useCallback(async (): Promise<boolean> => {
+    if (inFlight.current) return false;
     inFlight.current = true;
     const controller = new AbortController();
     refreshAbort.current = controller;
@@ -213,17 +218,24 @@ export function Widget() {
       // fallo transitorio no obliga a esperar al siguiente ciclo. Si se agota,
       // el error se muestra (no se oculta el fallo).
       const next = await retryWithBackoff(() => api.fetchUsage(), { ...USAGE_RETRY, signal: controller.signal });
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) return false;
       const prev = reportsRef.current;
       const merged = mergeReports(prev, next);
       reportsRef.current = merged;
       setReports(merged);
       api.setTrayTooltip(trayTooltip(merged)).catch(() => {});
       runAlerts(prev, merged);
+      if (nativeAlertsEnabled(configRef.current?.alerts)) {
+        for (const r of sessionsLost(prev, merged)) {
+          notify(`${r.name}: sesión caducada`, 'Pulsa «Renovar sesión» en su panel. Quorb se actualiza solo en cuanto se renueve.');
+        }
+      }
       setUpdatedAt(new Date());
       setError(null);
+      return true;
     } catch (e) {
       if (!controller.signal.aborted) setError(String(e));
+      return false;
     } finally {
       inFlight.current = false;
       if (!controller.signal.aborted) setLoading(false);
@@ -296,6 +308,22 @@ export function Widget() {
     return () => window.clearInterval(id);
   }, [refreshMinutes, refresh]);
 
+  // Si Claude Code, Codex o Gemini renuevan su token (o se inicia sesión), sus
+  // ficheros de credenciales cambian: se recarga al momento sin esperar al ciclo.
+  useEffect(() => {
+    const monitor = createSessionMonitor({
+      stamp: () => api.sessionStamp(),
+      refresh: () => refresh(),
+    });
+    const check = () => void monitor.check();
+    check();
+    const id = window.setInterval(check, SESSION_CHECK_MS);
+    return () => {
+      window.clearInterval(id);
+      monitor.dispose();
+    };
+  }, [refresh]);
+
   // ───── monitor (y cambios de resolución / barra de tareas) ─────
   // Se resuelve aunque la config aún no haya llegado (monitor actual/principal),
   // para que la tira no quede vacía ni en una posición arbitraria si el primer
@@ -320,6 +348,7 @@ export function Widget() {
   const order = reorder?.order ?? config?.providerOrder ?? [];
   const hiddenIds = config?.hiddenProviders ?? [];
   const visible = applyOrder(reports, order).filter((r) => !hiddenIds.includes(r.id));
+  const tags = config ? accountTags(config) : {};
   const active = reports.find((r) => r.id === hovered) ?? null;
 
   // ───── auto-ocultar ─────
@@ -741,6 +770,7 @@ export function Widget() {
               small={small}
               size={orbSize}
               active={hovered === r.id}
+              account={tags[r.id]}
               threshold={config?.alerts.threshold}
               dragging={reorder?.id === r.id}
               onHover={(el) => openFor(r.id, el)}

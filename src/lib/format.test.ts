@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatCompact, formatResetIn, levelFor, mergeReports, peakMeter, shortLabel, trayTooltip } from './format';
+import { formatCompact, formatResetIn, levelFor, mergeReports, peakMeter, sessionsLost, shortLabel, trayTooltip } from './format';
 import type { UsageReport } from './types';
 
 const base: UsageReport = {
@@ -49,6 +49,21 @@ describe('format', () => {
     expect(merged.stale).toBe(true);
     expect(merged.meters).toHaveLength(2);
     expect(merged.message).toBe('429');
+  });
+
+  it('keeps the last data when the session expires', () => {
+    const lost: UsageReport = { ...base, status: 'needsLogin', meters: [], action: 'login', message: 'caducada' };
+    const [merged] = mergeReports([base], [lost]);
+    expect(merged).toMatchObject({ status: 'needsLogin', action: 'login', message: 'caducada', stale: true });
+    expect(merged.meters).toHaveLength(2);
+    expect(mergeReports([], [lost])[0].meters).toHaveLength(0);
+  });
+
+  it('detects sessions that were just lost', () => {
+    const lost: UsageReport = { ...base, status: 'needsLogin', meters: [] };
+    expect(sessionsLost([base], [lost]).map((r) => r.id)).toEqual(['claude']);
+    expect(sessionsLost([lost], [lost])).toEqual([]);
+    expect(sessionsLost([], [lost])).toEqual([]);
   });
 
   it('shortens ring labels', () => {

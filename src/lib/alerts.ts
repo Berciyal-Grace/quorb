@@ -5,6 +5,14 @@
 
 import type { AlertMoment, AlertsConfig, Effect, UsageReport } from './types';
 
+/**
+ * ¿Debe el widget lanzar avisos nativos? Requiere el interruptor maestro
+ * (`enabled`) y que `native` no esté desactivado. Sin configuración, no.
+ */
+export function nativeAlertsEnabled(a: Pick<AlertsConfig, 'enabled' | 'native'> | null | undefined): boolean {
+  return !!a?.enabled && a.native !== false;
+}
+
 export interface AlertEvent {
   kind: AlertMoment;
   providerId: string;
