@@ -13,8 +13,10 @@ import { createAutostartController } from './lib/autostart-controller';
 import { configPersistedAfterSave, runMixedSave, mixedSaveMessage, reloadSecretsAfterSave } from './lib/settings-save';
 import { openAccountLogin } from './lib/account-login';
 import { createPresencePoller, effectivePersisted, isConnectionDirty } from './lib/account-health';
+import { createCodexInstallController, type CodexInstallController } from './lib/codex-install';
 import { comboFromEvent, prettyCombo } from './lib/shortcuts';
 import { ProviderLogo } from './components/ProviderLogo';
+import { CodexInstall } from './components/CodexInstall';
 import quorbLogo from './assets/quorb-logo.png';
 import { useUpdater } from './lib/useUpdater';
 import { formatMoney, formatPercent, peakMeter } from './lib/format';
@@ -655,6 +657,8 @@ function CliConnect({
   persisted,
   extra,
   health,
+  codexInstall,
+  onCodexRecheck,
 }: {
   id: string;
   provider: AccountProvider;
@@ -665,6 +669,10 @@ function CliConnect({
   /** Cuenta adicional (no la principal). */
   extra: boolean;
   health: HealthProps;
+  /** Controlador raíz de la instalación asistida de Codex (solo se usa con `codex`). */
+  codexInstall: CodexInstallController;
+  /** Relectura del CLI compartida con la raíz tras una instalación. */
+  onCodexRecheck: () => void;
 }) {
   const connected = useCliSession(id, persisted);
   const [busy, setBusy] = useState(false);
@@ -693,7 +701,7 @@ function CliConnect({
         <li>
           <b>Instala {CLI_INSTALL[provider]?.name ?? 'su CLI'}</b>
           <span>Hace falta para iniciar sesión y para renovarla cuando caduque, aunque ahora funcione.</span>
-          <CliMissing provider={provider} />
+          {provider === 'codex' ? <CodexInstall controller={codexInstall} onRecheck={onCodexRecheck} /> : <CliMissing provider={provider} />}
         </li>
       )}
       <li data-done={connected || undefined}>
@@ -740,6 +748,8 @@ function AccountEditor({
   loginCommand,
   cliMissing,
   health,
+  codexInstall,
+  onCodexRecheck,
 }: {
   account: Account;
   /** Ya está guardada tal cual en el backend (necesario para abrir su login y comprobarla). */
@@ -753,6 +763,9 @@ function AccountEditor({
   onChange: (patch: Partial<Account>) => void;
   onRemove: () => void;
   onSecrets: () => void;
+  /** Instalación asistida de Codex, compartida por la raíz y todas las cuentas. */
+  codexInstall: CodexInstallController;
+  onCodexRecheck: () => void;
 }) {
   const key = (k: SecretKey) => secretKey(k, a.id);
   const has = (k: SecretKey) => !!secrets[key(k)];
@@ -787,7 +800,7 @@ function AccountEditor({
         </li>
 
         {session && (
-          <CliConnect id={a.id} provider={a.provider} loginCommand={loginCommand} cliMissing={cliMissing} persisted={persisted} extra health={health} />
+          <CliConnect id={a.id} provider={a.provider} loginCommand={loginCommand} cliMissing={cliMissing} persisted={persisted} extra health={health} codexInstall={codexInstall} onCodexRecheck={onCodexRecheck} />
         )}
 
         {a.provider === 'cursor' && (
@@ -1036,6 +1049,14 @@ export function Settings() {
   // CLIs de login instalados (Claude Code, Codex, Gemini): se avisa antes de pulsar
   // «Iniciar sesión» y se detecta solo cuando se instala (cada 5 s o al volver a la ventana).
   const [cli, setCli] = useState<Record<string, boolean>>({});
+  // Relectura puntual del CLI fuera del intervalo: la usa la instalación asistida
+  // al terminar para habilitar el login sin depender de que la ventana siga abierta.
+  const cliRecheck = useCallback(() => {
+    api
+      .cliStatus()
+      .then(setCli)
+      .catch(() => {});
+  }, []);
   useEffect(() => {
     let alive = true;
     const check = () =>
@@ -1052,6 +1073,20 @@ export function Settings() {
       window.removeEventListener('focus', check);
     };
   }, []);
+  // Controlador de la instalación asistida de Codex: vive en la raíz de Ajustes
+  // para seguir vivo si el aviso del CLI desaparece (o se desmonta) antes de que
+  // resuelva la instalación. Nunca instala por sí solo: solo lee estado pasivo.
+  const [codexInstaller] = useState(() =>
+    createCodexInstallController({
+      getStatus: () => api.codexSetupStatus(),
+      install: () => api.installCodex(),
+      onInstalled: () => cliRecheck(),
+    }),
+  );
+  useEffect(() => {
+    codexInstaller.start();
+    return () => codexInstaller.stop();
+  }, [codexInstaller]);
   const [autostartController] = useState(() => createAutostartController({ read: isEnabled, enable, disable }));
   const [autostartState, setAutostartState] = useState(() => autostartController.getState());
   const [autostartDraft, setAutostartDraft] = useState<boolean | null>(null);
@@ -1552,6 +1587,8 @@ export function Settings() {
               ? cfg[selAccount.provider].loginCommand
               : ''
           }
+          codexInstall={codexInstaller}
+          onCodexRecheck={cliRecheck}
         />
       )}
       {!selAccount && (
@@ -1600,6 +1637,8 @@ export function Settings() {
                   persisted
                   extra={false}
                   health={healthFor(p, !cfg[p].enabled)}
+                  codexInstall={codexInstaller}
+                  onCodexRecheck={cliRecheck}
                 />
               </ol>
               <details className="q-details">

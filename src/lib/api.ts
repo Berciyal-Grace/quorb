@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { AlertMoment, AppConfig, Effect, Sample, ScopedSecretKey, SecretStatus, UsageReport } from './types';
+// Tipos del contrato de la instalación asistida de Codex. Solo tipos: evita un ciclo de ejecución.
+import type { CodexInstallResult, CodexSetupStatus } from './codex-install';
 
 /** Campos que el widget puede cambiar sin arrastrar el resto de la config. */
 export interface WidgetPatch {
@@ -29,6 +31,17 @@ export const api = {
   accountSessionFileExists: (id: string) => invoke<boolean>('account_session', { id }),
   /** CLIs de login instalados: `{ claude, codex, gemini }` */
   cliStatus: () => invoke<Record<string, boolean>>('cli_status'),
+  /**
+   * Estado pasivo de la instalación asistida de Codex CLI. Solo lee: nunca
+   * ejecuta procesos, red ni escrituras. Comando `codex_setup_status`.
+   */
+  codexSetupStatus: () => invoke<CodexSetupStatus>('codex_setup_status'),
+  /**
+   * Pide instalar Codex CLI. El backend abre el diálogo nativo de Windows y solo
+   * instala si se confirma; puede rechazar con un error genérico acotado.
+   * Comando `install_codex`.
+   */
+  installCodex: () => invoke<CodexInstallResult>('install_codex'),
   /** Consulta una cuenta (principal o adicional) con lo guardado, aunque esté oculta */
   checkProvider: (id: string) => invoke<UsageReport | null>('check_provider', { id }),
   openSettings: () => invoke<void>('open_settings'),
