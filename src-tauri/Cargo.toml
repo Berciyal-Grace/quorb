@@ -36,6 +36,20 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # Windows Credential Manager (y Keychain / Secret Service en otros SO)
 keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
 
+# Solo Windows: registro (PATH fresco) y Job Objects (contención del árbol de procesos).
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
+# Solo Unix: grupos de procesos para matar el árbol completo de un hijo.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [profile.release]
 codegen-units = 1
 lto = true
