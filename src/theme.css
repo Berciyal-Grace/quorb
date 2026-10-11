@@ -460,3 +460,64 @@ button.q-provider { display: flex; flex-direction: column; width: 100%; font: in
 .q-steps > li[data-state='warn']::before { content: '!'; background: color-mix(in srgb, var(--color-status-warning) 18%, var(--color-surface-2)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-status-warning) 55%, transparent); color: var(--color-status-warning); }
 .q-steps > li[data-state='error']::before { content: '!'; background: color-mix(in srgb, var(--color-status-danger) 18%, var(--color-surface-2)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-status-danger) 55%, transparent); color: var(--color-status-danger); }
 .q-steps > li > .eg-field, .q-steps > li > .q-cols, .q-steps > li > .eg-secret, .q-steps > li > div { margin-top: 6px; }
+
+/* #72 · Tratamiento de los secundarios hasta migrar al paquete del DS.
+ * La capa de fondo cambia de opacidad, no el texto, los iconos ni el foco.
+ * Mantener la copia de src/ds/egdev intacta y retirar este override cuando el DS lo cubra.
+ */
+.eg-btn--ghost {
+  --q-secondary-fill: var(--gradient-sheen), var(--color-surface-2);
+  --q-secondary-border: var(--color-border-hairline);
+  --q-secondary-shadow: var(--shadow-edge);
+}
+.eg-btn--secondary {
+  --q-secondary-fill: var(--gradient-btn-secondary), var(--color-surface-1);
+  --q-secondary-border: color-mix(in srgb, var(--color-primitive-red-neon) 50%, transparent);
+  --q-secondary-shadow: var(--shadow-edge-strong), var(--shadow-elev-1);
+}
+.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary) {
+  position: relative;
+  isolation: isolate;
+  background: transparent;
+  border-color: var(--q-secondary-border);
+  box-shadow: var(--q-secondary-shadow);
+  transform: none;
+}
+.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--q-secondary-fill);
+  opacity: 1;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary):is(:hover, .is-hover):not(:disabled):not([aria-disabled='true'])::before {
+  opacity: 0.85;
+}
+.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary):is(:hover, .is-hover) .eg-btn__icon {
+  transform: none;
+}
+.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary):is(:active, .is-pressed) {
+  transform: translateY(1px) scale(0.97);
+}
+.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary):is(:active, .is-pressed):not(:disabled):not([aria-disabled='true'])::before {
+  opacity: 0.7;
+}
+.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary):focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary):is(:disabled, [aria-disabled='true']) {
+  box-shadow: none;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .eg-btn:is(.eg-btn--ghost, .eg-btn--secondary)::before {
+    transition: none;
+  }
+  .eg-btn:is(.eg-btn--ghost, .eg-btn--secondary):is(:active, .is-pressed) {
+    transform: none;
+  }
+}
