@@ -486,7 +486,7 @@ export function Widget() {
       edge,
       anchor: (vertical ? strip.y : strip.x) + anchorRel,
       width: panelWidth,
-      maxHeight: panelHeightLimit(geo.area, edge, strip, panelWidth),
+      maxHeight: panelHeightLimit(geo.area, edge, strip),
       scaleFactor: geo.sf,
       orbSize,
       opacity: config?.opacity ?? 0.94,
