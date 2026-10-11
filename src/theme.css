@@ -470,12 +470,19 @@ button.q-provider { display: flex; flex-direction: column; width: 100%; font: in
   --q-secondary-border: var(--color-border-hairline);
   --q-secondary-shadow: var(--shadow-edge);
 }
+.eg-btn--destructive {
+  --q-secondary-fill: linear-gradient(180deg, color-mix(in srgb, var(--color-status-danger) 18%, transparent), color-mix(in srgb, var(--color-status-danger) 8%, transparent)), var(--color-surface-1);
+  --q-secondary-border: color-mix(in srgb, var(--color-status-danger) 55%, transparent);
+  --q-secondary-shadow: var(--shadow-edge);
+  --q-button-focus: 0 0 0 2px var(--color-bg-canvas), 0 0 0 4px var(--color-status-danger);
+  color: var(--color-status-danger);
+}
 .eg-btn--secondary {
   --q-secondary-fill: var(--gradient-btn-secondary), var(--color-surface-1);
   --q-secondary-border: color-mix(in srgb, var(--color-primitive-red-neon) 50%, transparent);
   --q-secondary-shadow: var(--shadow-edge-strong), var(--shadow-elev-1);
 }
-.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary) {
+.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary, .eg-btn--destructive) {
   position: relative;
   isolation: isolate;
   background: transparent;
@@ -483,7 +490,7 @@ button.q-provider { display: flex; flex-direction: column; width: 100%; font: in
   box-shadow: var(--q-secondary-shadow);
   transform: none;
 }
-.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary)::before {
+.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary, .eg-btn--destructive)::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -494,30 +501,30 @@ button.q-provider { display: flex; flex-direction: column; width: 100%; font: in
   pointer-events: none;
   transition: opacity var(--duration-fast) var(--ease-out);
 }
-.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary):is(:hover, .is-hover):not(:disabled):not([aria-disabled='true'])::before {
+.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary, .eg-btn--destructive):is(:hover, .is-hover):not(:disabled):not([aria-disabled='true'])::before {
   opacity: 0.85;
 }
-.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary):is(:hover, .is-hover) .eg-btn__icon {
+.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary, .eg-btn--destructive):is(:hover, .is-hover) .eg-btn__icon {
   transform: none;
 }
-.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary):is(:active, .is-pressed) {
+.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary, .eg-btn--destructive):is(:active, .is-pressed) {
   transform: translateY(1px) scale(0.97);
 }
-.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary):is(:active, .is-pressed):not(:disabled):not([aria-disabled='true'])::before {
+.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary, .eg-btn--destructive):is(:active, .is-pressed):not(:disabled):not([aria-disabled='true'])::before {
   opacity: 0.7;
 }
-.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary):focus-visible {
-  box-shadow: var(--shadow-focus);
+.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary, .eg-btn--destructive):focus-visible {
+  box-shadow: var(--q-button-focus, var(--shadow-focus));
 }
-.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary):is(:disabled, [aria-disabled='true']) {
+.eg-btn:is(.eg-btn--ghost, .eg-btn--secondary, .eg-btn--destructive):is(:disabled, [aria-disabled='true']) {
   box-shadow: none;
   transform: none;
 }
 @media (prefers-reduced-motion: reduce) {
-  .eg-btn:is(.eg-btn--ghost, .eg-btn--secondary)::before {
+  .eg-btn:is(.eg-btn--ghost, .eg-btn--secondary, .eg-btn--destructive)::before {
     transition: none;
   }
-  .eg-btn:is(.eg-btn--ghost, .eg-btn--secondary):is(:active, .is-pressed) {
+  .eg-btn:is(.eg-btn--ghost, .eg-btn--secondary, .eg-btn--destructive):is(:active, .is-pressed) {
     transform: none;
   }
 }

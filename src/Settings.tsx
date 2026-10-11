@@ -202,7 +202,7 @@ function SecretInput({ id, label, configured, onSaved, hint }: { id: ScopedSecre
           Guardar
         </button>
         {configured && (
-          <button className="eg-btn eg-btn--ghost" disabled={busy} onClick={() => save('')} title="Eliminar key">
+          <button className="eg-btn eg-btn--destructive" disabled={busy} onClick={() => save('')} title="Eliminar key">
             Quitar
           </button>
         )}
@@ -236,7 +236,7 @@ function NanConnect({ connected, onChange, account }: { connected: boolean; onCh
       <div className="q-inline">
         <span className="eg-status eg-status--success">Cuenta de NaN Cloud conectada{msg ? ` · ${msg}` : ''}</span>
         <button
-          className="eg-btn eg-btn--ghost eg-btn--sm"
+          className="eg-btn eg-btn--destructive eg-btn--sm"
           disabled={busy}
           onClick={() =>
             run(async () => {
@@ -927,7 +927,7 @@ function AccountEditor({
       )}
 
       <div className="q-inline">
-        <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" onClick={onRemove}>
+        <button type="button" className="eg-btn eg-btn--destructive eg-btn--sm" onClick={onRemove}>
           Eliminar esta cuenta
         </button>
         <small className="eg-field__hint">Al guardar se borran también sus claves del Administrador de credenciales.</small>
