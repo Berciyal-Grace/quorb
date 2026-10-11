@@ -8,7 +8,7 @@ import { ProviderDetails } from './components/ProviderDetails';
 import { api } from './lib/api';
 import { reportSummary } from './lib/format';
 import { officialUsageUrl } from './lib/order';
-import { createLatestQueue, detailBounds, DETAIL_EVENTS, type DetailInteraction, type DetailState } from './lib/detail-panel';
+import { createLatestQueue, basePanelZoom, detailBounds, fitPanel, panelScaleFromTransform, physicalPanelBounds, sameFit, samePhysical, DETAIL_EVENTS, type DetailInteraction, type DetailState, type PanelFit, type PhysicalBounds } from './lib/detail-panel';
 
 function readDetailsPreference(): boolean {
   try { return JSON.parse(localStorage.getItem('detailsOpen') ?? 'false') === true; }
@@ -38,6 +38,12 @@ export function DetailPanel() {
   const panelRef = useRef<HTMLDivElement>(null);
   const dataRef = useRef<DetailState | null>(null);
   const enqueue = useRef(createLatestQueue()).current;
+  // Fitted geometry; `null` until the first measurement, when the basal zoom is used.
+  const [fit, setFit] = useState<PanelFit | null>(null);
+  // Last native geometry actually applied (physical, incl. DPI). Only recorded after a
+  // successful apply so superseded or failed jobs cannot skip a needed retry.
+  const lastAppliedRef = useRef<PhysicalBounds | null>(null);
+  const positionedRef = useRef(false);
 
   const interact = (kind: DetailInteraction['kind']) => {
     const state = dataRef.current;
@@ -58,7 +64,7 @@ export function DetailPanel() {
         dataRef.current = payload;
         // Invalidate an in-flight show immediately, before React commits new content.
         enqueue(async () => { if (!payload) await getCurrentWindow().hide(); }).catch(console.warn);
-        if (!payload || wasClosed) setPositioned(false);
+        if (!payload || wasClosed) { setPositioned(false); positionedRef.current = false; lastAppliedRef.current = null; }
         setData(payload);
       });
       if (disposed) { stateListener(); return; }
@@ -80,25 +86,45 @@ export function DetailPanel() {
   useLayoutEffect(() => {
     if (!data || !panelRef.current) return;
     let disposed = false;
-    const measure = () => {
+    const base = basePanelZoom(data.orbSize);
+    // Natural height in unscaled CSS pixels. `borderBoxSize` is a layout metric, so a
+    // `transform: scale()` never feeds back into it; the rect fallback recovers the same
+    // value from the exact transform, read from the committed inline style.
+    const layoutHeightOf = (panel: HTMLDivElement, entry?: ResizeObserverEntry): number => {
+      const box = entry?.borderBoxSize?.[0];
+      if (box && Number.isFinite(box.blockSize) && box.blockSize > 0) return box.blockSize;
+      return panel.getBoundingClientRect().height / panelScaleFromTransform(panel.style.transform);
+    };
+    const layout = (entry?: ResizeObserverEntry) => {
       const panel = panelRef.current;
       if (disposed || !panel) return;
-      const bounds = detailBounds(data, panel.getBoundingClientRect().height);
+      const next = fitPanel(data, layoutHeightOf(panel, entry), base);
+      setFit((old) => (old && sameFit(old, next) ? old : next));
+      // Compare native (physical) bounds, not logical ones: a DPI change with identical
+      // logical geometry must still resize the window.
+      const physical = physicalPanelBounds(detailBounds(data, next), data.scaleFactor);
+      if (positionedRef.current && samePhysical(lastAppliedRef.current, physical)) return;
       enqueue(async (current) => {
         const win = getCurrentWindow();
-        const sf = data.scaleFactor;
         if (!current()) return;
-        await win.setPosition(new PhysicalPosition(Math.round(bounds.x * sf), Math.round(bounds.y * sf)));
+        await win.setPosition(new PhysicalPosition(physical.x, physical.y));
         if (!current()) return;
-        await win.setSize(new PhysicalSize(Math.max(1, Math.round(bounds.w * sf)), Math.max(1, Math.round(bounds.h * sf))));
+        // Size from the fitted geometry (not the rendered rect) so a 600.000061 px
+        // float overshoot never becomes a phantom 601 px window.
+        await win.setSize(new PhysicalSize(physical.w, physical.h));
         if (!current() || disposed) return;
+        positionedRef.current = true;
         setPositioned(true);
         // The native command refuses to show an orphan panel when the widget is hidden.
         await api.showDetail();
+        if (!current() || disposed) return;
+        // Cache only after the whole native apply succeeded, so a stale or failed job
+        // never marks a geometry as applied while the window still holds the old one.
+        lastAppliedRef.current = physical;
       }).catch(console.warn);
     };
-    measure();
-    const observer = new ResizeObserver(measure);
+    layout();
+    const observer = new ResizeObserver((entries) => layout(entries[0]));
     observer.observe(panelRef.current);
     return () => { disposed = true; observer.disconnect(); };
   }, [data, detailsOpen, enqueue]);
@@ -112,7 +138,8 @@ export function DetailPanel() {
   if (!data) return null;
   const usageUrl = officialUsageUrl(data.report.id);
   // El panel se diseña a la medida del DS (círculo de 56 px) y se escala entero con el tamaño de los círculos.
-  const zoom = Math.max(0.6, Math.min(1.5, data.orbSize / 56));
+  const base = basePanelZoom(data.orbSize);
+  const scale = fit?.zoom ?? base;
   const updated = data.updatedAt == null ? '—' : new Date(data.updatedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
   return (
     <div
@@ -127,7 +154,9 @@ export function DetailPanel() {
         className="panel q-panel eg-module-card eg-module-card--glass"
         role="dialog"
         aria-label={`Detalle de ${data.report.name}`}
-        style={{ left: 0, top: 0, width: data.width / zoom, maxHeight: data.maxHeight / zoom, overflowY: 'auto', zoom, '--orb': data.orbSize, visibility: positioned ? 'visible' : 'hidden' } as CSSProperties}
+        // No transitions/animations: a transitioned `transform` would make the measured
+        // rect lag behind the fitted scale and corrupt the next measurement.
+        style={{ left: 0, top: 0, width: data.width / base, transform: `scale(${scale})`, transformOrigin: 'top left', transition: 'none', animation: 'none', overflow: 'visible', '--orb': data.orbSize, visibility: positioned ? 'visible' : 'hidden' } as CSSProperties}
       >
         <ProviderCard report={data.report} />
         <button className="panel__more" aria-expanded={detailsOpen} onClick={() => {

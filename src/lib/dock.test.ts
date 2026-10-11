@@ -59,7 +59,7 @@ describe('dock', () => {
       const vertical = edge === 'left' || edge === 'right';
       const monitor = { x: -1920, y: -200, w: 1920, h: 720 };
       const strip = stripRect(monitor, edge, offset, vertical ? 80 : 400, vertical ? 400 : 80);
-      const limit = panelHeightLimit(monitor, edge, strip, 300);
+      const limit = panelHeightLimit(monitor, edge, strip);
       const reserved = panelWindowRect(monitor, edge, strip, 300, limit);
       const start = vertical ? strip.y : strip.x;
       const length = vertical ? strip.h : strip.w;
@@ -77,9 +77,17 @@ describe('dock', () => {
   it('limits panel height to the available space on short monitors', () => {
     const short = { x: 0, y: 0, w: 800, h: 300 };
     const strip = stripRect(short, 'bottom', 0.5, 400, 80);
-    expect(panelHeightLimit(short, 'bottom', strip, 300)).toBe(212);
-    expect(panelHeightLimit(short, 'left', strip, 300)).toBe(300);
-    expect(panelHeightLimit(area, 'top', strip, 300)).toBe(480);
+    expect(panelHeightLimit(short, 'bottom', strip)).toBe(212);
+    expect(panelHeightLimit(short, 'left', strip)).toBe(300);
+    expect(panelHeightLimit(area, 'top', strip)).toBe(952);
+  });
+
+  it('reserves the full height even for a narrow panel (no width cap)', () => {
+    const tall = { x: 0, y: 0, w: 400, h: 1400 };
+    const strip = stripRect(tall, 'top', 0.5, 400, 80);
+    // The old model capped a 300 px panel at 480 px; the natural height now wins.
+    expect(panelHeightLimit(tall, 'top', strip)).toBe(1400 - 80 - 8);
+    expect(panelHeightLimit(tall, 'left', strip)).toBe(1400);
   });
 
   it('unions rects', () => {
