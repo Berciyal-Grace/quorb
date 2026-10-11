@@ -157,7 +157,7 @@ impl Account {
     pub fn session_dir(&self, home: &Path) -> std::path::PathBuf {
         match self.config_dir.as_deref() {
             Some(d) => std::path::PathBuf::from(d),
-            None => home.join(".quorb").join("accounts").join(format!("{}-{}", self.provider, self.suffix())),
+            None => crate::channel::home_root(home).join("accounts").join(format!("{}-{}", self.provider, self.suffix())),
         }
     }
 
@@ -201,12 +201,12 @@ impl Default for AppConfig {
             hidden_providers: vec![],
             alerts: AlertsConfig::default(),
             claude: SubscriptionConfig {
-                enabled: true,
+                enabled: !crate::channel::is_dev(),
                 credentials_path: None,
                 login_command: "claude".into(),
             },
             codex: SubscriptionConfig {
-                enabled: true,
+                enabled: !crate::channel::is_dev(),
                 credentials_path: None,
                 login_command: "codex login".into(),
             },
@@ -247,7 +247,7 @@ pub struct ShortcutsConfig {
 impl Default for ShortcutsConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: !crate::channel::is_dev(),
             toggle: "Ctrl+Alt+U".into(),
             open_peak: "Ctrl+Alt+I".into(),
             refresh: "Ctrl+Alt+R".into(),
@@ -531,6 +531,9 @@ mod tests {
         assert!(!cfg.gemini.enabled && !cfg.cursor.enabled && !cfg.copilot.enabled && !cfg.openrouter.enabled);
         assert_eq!(cfg.gemini.login_command, "gemini");
         assert_eq!(cfg.shortcuts.toggle, "Ctrl+Alt+U");
+        assert_eq!(cfg.shortcuts.enabled, !crate::channel::is_dev());
+        assert_eq!(cfg.claude.enabled, !crate::channel::is_dev());
+        assert_eq!(cfg.codex.enabled, !crate::channel::is_dev());
         let c: AppConfig = serde_json::from_str(r#"{"copilot": {"username": " @egdev6 "}}"#).unwrap();
         assert_eq!(c.sanitized().copilot.username, "egdev6");
     }
@@ -566,7 +569,7 @@ mod tests {
     fn account_session_files() {
         let home = Path::new("/h");
         let mut a = Account { id: "gemini:w1".into(), provider: "gemini".into(), ..Default::default() };
-        assert_eq!(a.credentials_file(home).unwrap(), Path::new("/h/.quorb/accounts/gemini-w1/.gemini/oauth_creds.json"));
+        assert_eq!(a.credentials_file(home).unwrap(), crate::channel::home_root(home).join("accounts/gemini-w1/.gemini/oauth_creds.json"));
         assert_eq!(a.session_env(), Some("GEMINI_CLI_HOME"));
         a.provider = "claude".into();
         a.config_dir = Some("/w/.claude-work".into());

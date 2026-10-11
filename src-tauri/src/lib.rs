@@ -1,3 +1,4 @@
+mod channel;
 mod cli_process;
 mod codex_setup;
 mod config;
@@ -343,7 +344,7 @@ async fn install_codex(app: AppHandle, window: WebviewWindow) -> Result<codex_se
         let base_env = codex_setup::process_env_map();
         let confirm = || {
             app.dialog()
-                .message(codex_setup::CONSENT_MESSAGE)
+                .message(codex_setup::consent_message())
                 .title("Instalar Codex")
                 .kind(MessageDialogKind::Info)
                 .buttons(MessageDialogButtons::OkCancelCustom("Instalar".into(), "Cancelar".into()))
@@ -407,7 +408,7 @@ fn show_settings(app: &AppHandle) -> tauri::Result<()> {
         .map(|m| m.size().height as f64 / m.scale_factor() - 96.0)
         .map_or(SETTINGS_HEIGHT, |max| SETTINGS_HEIGHT.min(max).max(520.0));
     let win = WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App("index.html".into()))
-        .title("Ajustes · Quorb")
+        .title(format!("Ajustes · {}", channel::current().name))
         .inner_size(1040.0, height)
         .min_inner_size(480.0, 520.0)
         .center()
@@ -440,6 +441,7 @@ fn toggle_widget(app: &AppHandle) {
 /// La app se llamaba «egdev AI Usage» (identificador `es.egdev.ai-usage`).
 /// Si existe un fichero de entonces y aún no hay uno nuevo, se copia.
 fn migrate_legacy_dir(dir: &std::path::Path, file: &str) {
+    if !channel::current().migrate_legacy { return; }
     let target = dir.join(file);
     if target.exists() {
         return;
@@ -462,7 +464,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&toggle, &refresh, &settings, &sep, &quit])?;
 
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
-        .tooltip("Quorb")
+        .tooltip(channel::current().name)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -551,7 +553,7 @@ pub fn run() {
 
             // El detalle tiene su propia superficie: abrirlo nunca redimensiona la tira.
             WebviewWindowBuilder::new(app, DETAIL, WebviewUrl::App("index.html".into()))
-                .title("Quorb · detalle")
+                .title(format!("{} · detalle", channel::current().name))
                 .inner_size(330.0, 260.0)
                 .decorations(false)
                 .transparent(true)
@@ -565,7 +567,7 @@ pub fn run() {
 
             // Ventana de efectos: transparente, sin foco, encima de todo y sin capturar el ratón.
             let overlay = WebviewWindowBuilder::new(app, OVERLAY, WebviewUrl::App("index.html".into()))
-                .title("Quorb · efectos")
+                .title(format!("{} · efectos", channel::current().name))
                 .decorations(false)
                 .transparent(true)
                 .shadow(false)

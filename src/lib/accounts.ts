@@ -1,5 +1,6 @@
 // Cuentas adicionales de un proveedor (src-tauri/src/config.rs › Account).
 import type { Account, AccountProvider, AppConfig, ScopedSecretKey, SecretKey, SecretStatus } from './types';
+import { ownedHomeDir } from './app-identity';
 
 /** Proveedor de un id de informe: `claude` o `claude:trabajo` → `claude`. */
 export const providerOf = (id: string): string => id.split(':')[0];
@@ -23,8 +24,8 @@ export const CLI_INSTALL: Partial<Record<AccountProvider, { name: string; cmd: s
 };
 
 /** Carpeta por defecto (igual que `Account::session_dir`). */
-export const defaultSessionDir = (a: Pick<Account, 'id' | 'provider'>) =>
-  `%USERPROFILE%\\.quorb\\accounts\\${a.provider}-${a.id.split(':')[1] ?? a.id}`;
+export const defaultSessionDir = (a: Pick<Account, 'id' | 'provider'>, appName: string | null = 'Quorb') =>
+  `%USERPROFILE%\\${ownedHomeDir(appName)}\\accounts\\${a.provider}-${a.id.split(':')[1] ?? a.id}`;
 
 export const accountsOf = (cfg: AppConfig, provider: string): Account[] => cfg.accounts.filter((a) => a.provider === provider);
 
