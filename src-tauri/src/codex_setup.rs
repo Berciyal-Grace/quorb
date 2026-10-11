@@ -53,6 +53,11 @@ pub const CONSENT_MESSAGE: &str = "Se instalará el CLI oficial de Codex solo pa
 No se modifica el registro global de npm, no se cambia el PATH del sistema ni de otros programas, y no se inicia sesión ni se guardan credenciales: el acceso con tu cuenta de ChatGPT lo haces después con «Iniciar sesión».\n\n\
 ¿Instalar Codex ahora?";
 
+pub fn consent_message() -> String {
+    CONSENT_MESSAGE.replace("solo para Quorb.", &format!("solo para {}.", crate::channel::current().name))
+        .replace("~/.quorb/", &format!("~/{}/", crate::channel::current().home_dir))
+}
+
 // ───────────────────────── DTOs ─────────────────────────
 
 /// Resultado de un intento de instalación (persistido en memoria).
@@ -408,7 +413,7 @@ pub fn process_env_map() -> BTreeMap<String, String> {
 // ───────────────────────── rutas gestionadas ─────────────────────────
 
 pub fn tools_root(home: &Path) -> PathBuf {
-    home.join(".quorb").join("tools")
+    crate::channel::home_root(home).join("tools")
 }
 
 pub fn canonical_prefix(root: &Path) -> PathBuf {
@@ -1532,12 +1537,14 @@ mod tests {
         let home = Path::new("C:\\Users\\ana");
         let dirs = managed_native_dirs(home);
         let s: Vec<String> = dirs.iter().map(|d| d.to_string_lossy().replace('\\', "/")).collect();
-        assert!(s.iter().any(|d| d.contains(
-            ".quorb/tools/codex-0.162.1/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64"
-        )));
+        let root = crate::channel::current().home_dir;
+        assert!(s.iter().any(|d| d.contains(&format!(
+            "{root}/tools/codex-0.162.1/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64"
+        ))));
         assert!(s.iter().any(|d| {
-            d.contains(".quorb/tools/codex-0.162.1/node_modules/@openai/codex-win32-arm64")
+            d.contains(&format!("{root}/tools/codex-0.162.1/node_modules/@openai/codex-win32-arm64"))
         }));
+        assert!(consent_message().contains(&format!("~/{root}/tools/")));
         assert!(s.iter().any(|d| d.contains("x86_64-pc-windows-msvc")));
         assert!(s.iter().any(|d| d.contains("aarch64-pc-windows-msvc")));
     }

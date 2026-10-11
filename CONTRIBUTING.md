@@ -87,6 +87,59 @@ Each provider is a single Rust file in `src-tauri/src/providers/<name>.rs` that 
 
 Run the checks that cover your change before opening a PR: `npm test`, `npm run typecheck` and `cd src-tauri; cargo test`. Keep the change focused on the provider or fix you are contributing.
 
+### Installed Dev channel
+
+**Quorb Dev is a separate installed app**, not `npm run app:dev` (hot reload).
+Every push to `main` runs `.github/workflows/dev.yml`; a successful signed build
+publishes a **prerelease** in this same repository. Production releases remain manual.
+
+| | Quorb (stable) | Quorb Dev |
+| --- | --- | --- |
+| App / executable | `Quorb` / `quorb.exe` | `Quorb Dev` / `quorb-dev.exe` |
+| App identifier / credential service | `es.egdev.quorb` | `es.egdev.quorb.dev` |
+| App data on Windows | `%APPDATA%\es.egdev.quorb` | `%APPDATA%\es.egdev.quorb.dev` |
+| Managed accounts and CLI tools | `%USERPROFILE%\.quorb` | `%USERPROFILE%\.quorb-dev` |
+| Update feed | Latest stable release | `dev-latest/latest.json` |
+
+**To install:** open [Releases](https://github.com/egdev6/quorb/releases), choose
+an immutable `dev-<run-id>-<attempt>` prerelease and install its **Quorb Dev**
+`.exe` (NSIS) or `.msi`. Both apps can coexist. The `dev-latest` release contains
+only the rolling update manifest, not an installer. Dev shows its own name in
+Settings and the tray. Its global shortcuts and default Claude/Codex providers
+start disabled; configure accounts separately. Additional CLI accounts and
+managed Codex installations use Dev's own folder. Explicit custom session folders
+and primary providers' external CLI/app sessions can still be shared by choice;
+use additional accounts with the default Dev folder to keep logins separate.
+
+**Private-repository limitation:** you can download the first installer while
+signed into GitHub, but the installed updater cannot authenticate to a private
+repository. Automatic checks/downloads become usable only after the owner makes
+the repository public. This change does not change visibility or embed a token.
+With public access, checks run on startup and every six hours, or through
+Settings → Updates → Check now; install the offered update through the existing UI.
+It does not silently install every commit.
+
+Maintainers: Dev reuses the existing updater public key and the repository's
+`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Without a
+valid signing key, publication fails; signatures are never bypassed. Installer
+Authenticode signing is still not configured (Windows may show SmartScreen).
+Versions are derived from the workflow build number as `0.<n / 65536 floor>.<n % 65536>`
+(with Windows version bounds); they are independent of stable version bumps.
+The overlay is generated in ignored `.dev-build/`, never committed into the
+production manifests. Do not reset the workflow's build-number history.
+
+Each build uses an immutable tag and asset URLs. Only feed publication is
+serialized; older/rerun builds cannot move it backwards. Pending feed jobs may be
+superseded by GitHub's concurrency queue, while each push keeps its build job.
+A failed build does not advance the feed. Tests run on Linux (including the
+POSIX-only signing-setup fixtures), with frontend/Dev helper tests and both Rust
+identities also checked on Windows. Stable `release.yml` is unchanged.
+
+Merging enables this workflow on subsequent `main` pushes. Before relying on it,
+check a successful Windows run and test coexistence, separate autostart entries,
+uninstall, and a signed update between two Dev builds on a real PC. No remote
+workflow, release, secret or visibility change is performed by local preparation.
+
 ### Releasing (maintainers)
 
 Version bumping uses the existing script:
@@ -112,7 +165,7 @@ npm run setup:signing
 
 That script generates the signing key in `%USERPROFILE%\.tauri\quorb.key` (it never overwrites an existing key), writes the public key to `src-tauri/tauri.conf.json` and, if GitHub CLI is authenticated, uploads `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` as repository secrets. Keep a backup of the private key and its password: if they are lost, installed versions will not accept updates signed with a different key.
 
-**Release workflow status.** The active workflow is `.github/workflows/release.yml`. It never triggers on tags or pushes: a maintainer starts it manually from the Actions tab on `main`, passing the stable `version` and the full 40-character `source_sha` of an already-merged commit. It validates the inputs, manifest versions, notes file, tag collision and updater public key, then runs the tests, builds on Windows and creates a **draft** release that you publish yourself. Signing secrets are only exposed in the signing/bundle step. Until the owner provisions the updater key and the repository secrets, treat the release as blocked, not automated.
+**Production release workflow status.** The production workflow is `.github/workflows/release.yml`. It never triggers on tags or pushes: a maintainer starts it manually from the Actions tab on `main`, passing the stable `version` and the full 40-character `source_sha` of an already-merged commit. It validates the inputs, manifest versions, notes file, tag collision and updater public key, then runs the tests, builds on Windows and creates a **draft** release that you publish yourself. Signing secrets are only exposed in the signing/bundle step. Until the owner provisions the updater key and the repository secrets, treat the release as blocked, not automated.
 
 ---
 
@@ -199,6 +252,61 @@ Cada proveedor es un solo archivo Rust en `src-tauri/src/providers/<nombre>.rs` 
 
 Ejecutad las comprobaciones que cubran vuestro cambio antes de abrir una PR: `npm test`, `npm run typecheck` y `cd src-tauri; cargo test`. Mantened el cambio centrado en el proveedor o la corrección que aportáis.
 
+### Canal Dev instalado
+
+**Quorb Dev es una app instalada independiente**, no `npm run app:dev` (hot reload).
+Cada push a `main` ejecuta `.github/workflows/dev.yml`; una build firmada correcta
+publica una **prerelease** en este mismo repositorio. Producción sigue siendo manual.
+
+| | Quorb (estable) | Quorb Dev |
+| --- | --- | --- |
+| App / ejecutable | `Quorb` / `quorb.exe` | `Quorb Dev` / `quorb-dev.exe` |
+| Identificador / servicio de credenciales | `es.egdev.quorb` | `es.egdev.quorb.dev` |
+| Datos en Windows | `%APPDATA%\es.egdev.quorb` | `%APPDATA%\es.egdev.quorb.dev` |
+| Cuentas y CLI gestionados | `%USERPROFILE%\.quorb` | `%USERPROFILE%\.quorb-dev` |
+| Feed de actualizaciones | Última release estable | `dev-latest/latest.json` |
+
+**Para instalar:** abre [Releases](https://github.com/egdev6/quorb/releases), elige
+una prerelease inmutable `dev-<run-id>-<intento>` e instala su **Quorb Dev**
+`.exe` (NSIS) o `.msi`. Ambas apps pueden convivir. La release `dev-latest`
+contiene solo el manifiesto de actualización, no un instalador. Dev muestra su
+nombre en Ajustes y la bandeja. Sus atajos globales y proveedores principales
+Claude/Codex empiezan desactivados; configura las cuentas por separado. Las cuentas
+CLI adicionales y la instalación gestionada de Codex usan la carpeta propia de Dev.
+Las carpetas de sesión personalizadas y las sesiones externas de los CLI/apps de
+las cuentas principales pueden compartirse por elección; usa cuentas adicionales
+con la carpeta Dev por defecto si quieres separar también los logins.
+
+**Limitación del repositorio privado:** puedes descargar el primer instalador
+con tu sesión de GitHub, pero el updater instalado no se autentica en repositorios
+privados. Las comprobaciones/descargas automáticas funcionarán cuando el owner
+haga público el repositorio. Este cambio no modifica la visibilidad ni incluye tokens.
+Con acceso público, busca al arrancar y cada seis horas, o mediante
+Ajustes → Actualizaciones → Buscar ahora; instala la actualización ofrecida desde
+la interfaz existente. No instala silenciosamente cada commit.
+
+Mantenedores: Dev reutiliza la clave pública del updater y los secretos existentes
+`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Sin una clave
+válida falla la publicación; nunca se omite la firma. La firma Authenticode del
+instalador sigue sin configurar (Windows puede mostrar SmartScreen).
+Las versiones salen del número de build del workflow: `0.<n / 65536 entero>.<n % 65536>`
+(con límites de Windows), independientes de los bumps estables. El overlay se
+genera en `.dev-build/`, ignorado por Git; no se sube a los manifiestos de producción.
+No reinicies el historial de números de build del workflow.
+
+Cada build tiene tag y URLs de assets inmutables. Solo se serializa la publicación
+del feed; builds antiguas/reintentos no pueden retrocederlo. GitHub puede sustituir
+jobs de feed pendientes en su cola, pero cada push conserva su job de compilación.
+Una build fallida no avanza el feed. Los tests completos corren en Linux (incluidos
+los fixtures POSIX de preparación de firma); frontend/helpers Dev y ambas identidades
+Rust se comprueban también en Windows. `release.yml` estable queda intacto.
+
+Al integrar esto, los siguientes pushes a `main` activan el workflow. Antes de
+fiarte del canal, comprueba una ejecución Windows correcta y prueba convivencia,
+autoarranque independiente, desinstalación y actualización firmada entre dos
+builds Dev en un PC real. La preparación local no ejecuta workflows ni cambia
+releases, secretos o visibilidad remotos.
+
 ### Publicar (mantenedores)
 
 El cambio de versión usa el script existente:
@@ -224,7 +332,7 @@ npm run setup:signing
 
 Ese script genera la clave de firma en `%USERPROFILE%\.tauri\quorb.key` (nunca sobrescribe una clave existente), escribe la clave pública en `src-tauri/tauri.conf.json` y, si GitHub CLI tiene sesión iniciada, sube `TAURI_SIGNING_PRIVATE_KEY` y `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` como secretos del repositorio. Guardad una copia de la clave privada y su contraseña: si se pierden, las versiones instaladas no aceptarán actualizaciones firmadas con otra clave.
 
-**Estado del workflow de release.** El workflow activo es `.github/workflows/release.yml`. No se dispara con tags ni pushes: un mantenedor lo inicia a mano desde la pestaña Actions sobre `main`, indicando la `version` estable y el `source_sha` completo de 40 caracteres de un commit ya fusionado. Valida los inputs, las versiones de los manifiestos, las notas, la colisión de tag y la clave pública del updater; después pasa los tests, compila en Windows y crea un **borrador** de release que publicas tú. Los secretos de firma solo se exponen en el paso de firma/empaquetado. Hasta que el owner aprovisione la clave y los secretos del repositorio, considera la release bloqueada, no automática.
+**Estado del workflow de producción.** El workflow de producción es `.github/workflows/release.yml`. No se dispara con tags ni pushes: un mantenedor lo inicia a mano desde la pestaña Actions sobre `main`, indicando la `version` estable y el `source_sha` completo de 40 caracteres de un commit ya fusionado. Valida los inputs, las versiones de los manifiestos, las notas, la colisión de tag y la clave pública del updater; después pasa los tests, compila en Windows y crea un **borrador** de release que publicas tú. Los secretos de firma solo se exponen en el paso de firma/empaquetado. Hasta que el owner aprovisione la clave y los secretos del repositorio, considera la release bloqueada, no automática.
 
 <!-- egdev:contact:start -->
 ## Contact

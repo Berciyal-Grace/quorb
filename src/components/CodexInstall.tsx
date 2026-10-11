@@ -1,8 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { CODEX_PACKAGE, codexInstallActions, codexInstallView, type CodexInstallAction, type CodexInstallController } from '../lib/codex-install';
 
-/** Plantilla (no ruta real) de la carpeta de Quorb donde aterriza el paquete fijado. */
-const TARGET_FOLDER = String.raw`%USERPROFILE%\.quorb\tools\codex-0.162.1`;
+import { ownedHomeDir, useAppName } from '../lib/app-identity';
 
 /**
  * Sustituye al aviso de copia solo para Codex: ofrece la instalación asistida
@@ -10,6 +9,8 @@ const TARGET_FOLDER = String.raw`%USERPROFILE%\.quorb\tools\codex-0.162.1`;
  * mantienen su flujo de copiar e instalar a mano.
  */
 export function CodexInstall({ controller, onRecheck }: { controller: CodexInstallController; onRecheck: () => void }) {
+  const appName = useAppName();
+  const targetFolder = `%USERPROFILE%\\${ownedHomeDir(appName)}\\tools\\codex-0.162.1`;
   const state = useSyncExternalStore(controller.subscribe, controller.getState, controller.getState);
   // Visible mientras el componente está montado: al desmontarse se descarta la
   // lectura pasiva en vuelo, pero la instalación en curso sigue en el controlador
@@ -126,7 +127,7 @@ export function CodexInstall({ controller, onRecheck }: { controller: CodexInsta
             Paquete fijado: <code>{CODEX_PACKAGE}</code> desde el registro oficial de npm. No se instala «la última».
           </li>
           <li>
-            Carpeta de destino: <code>{TARGET_FOLDER}</code>, dentro de la carpeta de Quorb. No se toca el npm global ni las variables de entorno.
+            Carpeta de destino: <code>{targetFolder}</code>, dentro de la carpeta de Quorb. No se toca el npm global ni las variables de entorno.
           </li>
           <li>Se ignoran los scripts de ciclo de vida del paquete y se valida la versión real antes de darlo por bueno.</li>
           <li>

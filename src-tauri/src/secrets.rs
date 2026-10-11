@@ -3,7 +3,6 @@
 
 use std::collections::BTreeMap;
 
-const SERVICE: &str = "es.egdev.quorb";
 /// Nombre anterior de la app: se leen sus secretos una vez y se copian al nuevo.
 const LEGACY_SERVICE: &str = "es.egdev.ai-usage";
 
@@ -59,7 +58,7 @@ fn entry(key: &str) -> Result<keyring::Entry, String> {
     if !is_known(key) {
         return Err(format!("Clave desconocida: {key}"));
     }
-    keyring::Entry::new(SERVICE, key).map_err(|e| e.to_string())
+    keyring::Entry::new(crate::channel::current().identifier, key).map_err(|e| e.to_string())
 }
 
 pub fn get(key: &str) -> Option<String> {
@@ -68,7 +67,7 @@ pub fn get(key: &str) -> Option<String> {
         .get_password()
         .ok()
         .filter(|s| !s.trim().is_empty());
-    if key.contains('@') {
+    if key.contains('@') || !crate::channel::current().migrate_legacy {
         return current;
     }
     current.or_else(|| migrate_legacy(key))

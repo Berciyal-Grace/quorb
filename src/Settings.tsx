@@ -4,6 +4,7 @@ import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { getVersion } from '@tauri-apps/api/app';
+import { useAppName } from './lib/app-identity';
 import { api } from './lib/api';
 import { ORB_SIZE, type Account, type AccountProvider, type AlertMoment, type AppConfig, type Effect, type MediaSize, type ScopedSecretKey, type SecretKey, type SecretStatus, type UsageReport } from './lib/types';
 import { ACCOUNT_SECRETS, CLI_INSTALL, SESSION_DIR, accountReady, accountsOf, defaultSessionDir, newAccount, secretKey } from './lib/accounts';
@@ -62,6 +63,7 @@ function Section({ title, kicker, id, children }: { title: string; kicker?: stri
 }
 
 function UpdatesSection({ auto, onAuto }: { auto: boolean; onAuto: (v: boolean) => void }) {
+  const appName = useAppName();
   const [version, setVersion] = useState<string>('');
   const { state, check, install } = useUpdater(auto);
   useEffect(() => {
@@ -96,7 +98,7 @@ function UpdatesSection({ auto, onAuto }: { auto: boolean; onAuto: (v: boolean) 
       {(state.phase === 'available' || state.phase === 'installing') && state.info.notes && <pre className="q-pre">{state.info.notes}</pre>}
       <div className="q-inline">
         <span className="q-note">
-          Quorb <b>{version ? `v${version}` : ''}</b>
+          {appName ?? '…'} <b>{version ? `v${version}` : ''}</b>
           {state.phase === 'none' && ' · estás en la última versión'}
         </span>
         <button type="button" className="eg-btn eg-btn--ghost eg-btn--sm" disabled={state.phase === 'checking' || state.phase === 'installing'} onClick={() => check()}>
@@ -767,6 +769,7 @@ function AccountEditor({
   codexInstall: CodexInstallController;
   onCodexRecheck: () => void;
 }) {
+  const appName = useAppName();
   const key = (k: SecretKey) => secretKey(k, a.id);
   const has = (k: SecretKey) => !!secrets[key(k)];
   const session = SESSION_DIR[a.provider];
@@ -920,8 +923,8 @@ function AccountEditor({
             Cada cuenta guarda su sesión en su propia carpeta, así no toca la principal: el login se abre con <code>{session.env}</code>{' '}
             apuntando a ella. Si la comprobación pide renovar la sesión, «Volver a abrir el login» abre de nuevo el CLI.
           </p>
-          <Field label="Carpeta de sesión" hint={<>Vacío = <code>{defaultSessionDir(a)}</code>. Puedes usar una que ya tengas. Quorb lee <code>{session.file}</code> dentro de ella.</>}>
-            <input type="text" spellCheck={false} value={a.configDir ?? ''} placeholder={defaultSessionDir(a)} onChange={(e) => onChange({ configDir: strOrNull(e.target.value) })} />
+          <Field label="Carpeta de sesión" hint={<>Vacío = <code>{defaultSessionDir(a, appName)}</code>. Puedes usar una que ya tengas. Quorb lee <code>{session.file}</code> dentro de ella.</>}>
+            <input type="text" spellCheck={false} value={a.configDir ?? ''} placeholder={defaultSessionDir(a, appName)} onChange={(e) => onChange({ configDir: strOrNull(e.target.value) })} />
           </Field>
         </details>
       )}
@@ -1043,6 +1046,7 @@ function loadTab(): ProviderTab {
 }
 
 export function Settings() {
+  const appName = useAppName();
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [baseline, setBaseline] = useState<AppConfig | null>(null);
   const [secrets, setSecrets] = useState<SecretStatus>({});
@@ -1418,7 +1422,7 @@ export function Settings() {
         <div className="q-brand">
           <img className="q-brand__logo" src={quorbLogo} alt="" aria-hidden="true" />
           <span className="q-brand__text">
-            <span className="q-brand__name">Quorb</span>
+            <span className="q-brand__name">{appName ?? '…'}</span>
             <span className="q-brand__ver">Ajustes</span>
           </span>
         </div>
